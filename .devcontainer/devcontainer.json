@@ -1,0 +1,35 @@
+{
+
+  "name": "HA Int core3 fsqcx220804",
+  "build": {
+    "dockerfile": "../Dockerfile.dev"
+  },
+  "runArgs": [
+    "-e",
+    "GIT_EDITOR=code --wait",
+    "--network=ipvlan",
+    "--name=vsc-ha-int-core3-220804"
+  ],
+  // Set *default* container specific settings.json values on container create.
+  "settings": {
+    "python.pythonPath": "/usr/local/bin/python",
+    "python.languageServer": "Pylance",
+    "python.linting.enabled": true,
+    "python.formatting.blackPath": "/usr/local/bin/black",
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true
+  },
+  // "remoteUser": "root",
+  // Add the IDs of extensions you want installed when the container is created.
+  "extensions": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "donjayamanne.githistory",
+    "mhutchie.git-graph",
+    "waderyan.gitblame",
+    "donjayamanne.git-extension-pack",
+    "howardzuo.vscode-git-tags",
+    "donjayamanne.python-environment-manager"
+  ],
+  // "postCreateCommand": "./.devcontainer/postCreateCommand.sh"
+}
