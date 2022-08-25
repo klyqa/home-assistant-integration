@@ -68,12 +68,9 @@ SCAN_INTERVAL = timedelta(seconds=30)
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     """Set up the klyqa component."""
-    if DOMAIN in hass.data: # or DOMAIN not in yaml_config:
+    if DOMAIN in hass.data:
         return True
-    # if Platform.LIGHT in yaml_config:
-    #     for conf in yaml_config[Platform.LIGHT]:
-    #         if conf["platform"] == DOMAIN:
-    # return True
+
     component = hass.data[DOMAIN] = KlyqaDataCoordinator.instance(
         LOGGER, DOMAIN, hass, SCAN_INTERVAL
     )
@@ -86,7 +83,6 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
-    # return True
     """Set up or change Klyqa integration from a config entry."""
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
