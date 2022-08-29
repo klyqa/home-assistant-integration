@@ -28,7 +28,8 @@ from collections.abc import Callable
 import asyncio
 
 TIMEOUT_SEND = 4.4
-# PARALLEL_UPDATES = 1
+
+from homeassistant.components.group.light import LightGroup
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -76,7 +77,7 @@ from .api import bulb_cli as api
 from . import datacoordinator as coord
 from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
 
-from .const import CONF_POLLING, DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT
+from .const import CONF_POLLING, DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP
 
 SUPPORT_KLYQA = SUPPORT_BRIGHTNESS | SUPPORT_TRANSITION
 
@@ -159,9 +160,9 @@ async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccou
         password,
         host,
         hass,
-        polling
-        # sync_rooms=sync_rooms,
-        # scan_interval=scan_interval,
+        polling,
+        sync_rooms=sync_rooms,
+        scan_interval=scan_interval,
     )
     component.KlyqaAccounts[username] = klyqa
     # if not await hass.async_add_executor_job(klyqa.login):
@@ -172,6 +173,35 @@ async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccou
         )
         return
     return klyqa
+
+
+class KlyqaLightGroup(LightGroup):
+
+    def __init__(self, hass, settings: dict[str]):
+        self.hass = hass
+        self.settings = settings
+
+        u_id = api.format_uid(settings.get("id"))
+
+        entity_id = ENTITY_ID_FORMAT.format(u_id)
+
+        entity_ids: list[str] = []
+        ha_entities = self.hass.data["light"].entities
+
+        for e in settings["devices"]:
+            uid = api.format_uid(e.get("localDeviceId"))
+
+            # light = [
+            #     e for e in ha_entities if hasattr(e, "u_id") and e.u_id == uid
+            # ]
+
+            # if len(light) == 0:
+            #     raise Exception(f"Missing entity with id {uid}.")
+
+            entity_ids.append(ENTITY_ID_FORMAT.format(uid))
+
+        super().__init__(entity_id, settings["name"], entity_ids)
+
 
 
 async def async_setup_klyqa(
@@ -197,6 +227,18 @@ async def async_setup_klyqa(
 
     entity_registry = er.async_get(hass)
 
+    async def add_new_light_group(event: Event) -> None:
+
+        device_settings = event.data
+
+        try:
+            entity = KlyqaLightGroup(hass, device_settings)
+        except Exception as e:
+            LOGGER.warn(f"Couldn't add light group {device_settings['name']}")
+            return
+
+        add_entities([entity], True)
+
     async def add_new_entity(event: Event) -> None:
 
         device_settings = event.data
@@ -217,11 +259,6 @@ async def async_setup_klyqa(
         u_id = api.format_uid(device_settings.get("localDeviceId"))
 
         entity_id = ENTITY_ID_FORMAT.format(u_id)
-        # entity_id = generate_entity_id(
-        #     ENTITY_ID_FORMAT,
-        #     device_settings.get("localDeviceId"),
-        #     hass=hass,
-        # )
 
         light_c: EntityComponent = hass.data["light"]
         if light_c.get_entity(entity_id):
@@ -266,8 +303,10 @@ async def async_setup_klyqa(
         hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
     )
 
-    # await hass.async_add_executor_job(klyqa.request_account_settings)
-    # await klyqa.request_account_settings()
+    hass.data[DOMAIN].remove_listeners.append(
+        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT_GROUP, add_new_light_group)
+    )
+
     await klyqa.update_account()
 
 
@@ -387,37 +426,38 @@ class KlyqaLight(LightEntity):
             configuration_url=url,
         )
         # self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
-        self.rooms = []
-        for room in self._klyqa_api.acc_settings.get("rooms"):
-            for device in room.get("devices"):
-                if api.format_uid(device.get("localDeviceId")) == self.u_id:
-                    self.rooms.append(room)
+        if self.sync_rooms:
+            self.rooms = []
+            for room in self._klyqa_api.acc_settings.get("rooms"):
+                for device in room.get("devices"):
+                    if api.format_uid(device.get("localDeviceId")) == self.u_id:
+                        self.rooms.append(room)
 
-        entity_registry = er.async_get(self.hass)
-        re = entity_registry.async_get_entity_id(Platform.LIGHT, DOMAIN, self.unique_id)
-        entity_registry_entry = entity_registry.async_get(re)
+            entity_registry = er.async_get(self.hass)
+            re = entity_registry.async_get_entity_id(Platform.LIGHT, DOMAIN, self.unique_id)
+            entity_registry_entry = entity_registry.async_get(re)
 
-        if (
-            entity_registry_entry
-            and entity_registry_entry.area_id
-            and len(self.rooms) == 0
-        ):
-            entity_registry.async_update_entity(
-                entity_id=entity_registry_entry.entity_id, area_id=""
-            )
+            if (
+                entity_registry_entry
+                and entity_registry_entry.area_id
+                and len(self.rooms) == 0
+            ):
+                entity_registry.async_update_entity(
+                    entity_id=entity_registry_entry.entity_id, area_id=""
+                )
 
-        if len(self.rooms) > 0:
-            area_reg = ar.async_get(self.hass)
-            # only 1 room supported by ha
-            area = area_reg.async_get_area_by_name(self.rooms[0].get("name"))
-            if area:
-                self._attr_device_info["suggested_area"] = area.name
-                LOGGER.info(f"Add bulb {self.name} to room {area.name}.")
-                # ent_id = entity_registry.async_get(self.entity_id)
-                if entity_registry_entry:
-                    entity_registry.async_update_entity(
-                        entity_id=entity_registry_entry.entity_id, area_id=area.name
-                    )
+            if len(self.rooms) > 0:
+                area_reg = ar.async_get(self.hass)
+                # only 1 room supported by ha
+                area = area_reg.async_get_or_create(self.rooms[0].get("name"))
+                if area:
+                    self._attr_device_info["suggested_area"] = area.name
+                    LOGGER.info(f"Add bulb {self.name} to room {area.name}.")
+
+                    if entity_registry_entry:
+                        entity_registry.async_update_entity(
+                            entity_id=entity_registry_entry.entity_id, area_id=area.id
+                        )
 
     @property
     def entity_registry_enabled_default(self) -> bool:
