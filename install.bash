@@ -56,7 +56,12 @@ if [ -n "$haPath" ]; then
     cd "$haPath/custom_components" || error "Could not change path to $haPath/custom_components"
 
     if [ -d "$haPath/custom_components/klyqa" ]; then
-        warn "Klyqa directory already exist, cleaning up..."
+        warn "Klyqa directory already exist, cleaning up [Y/n]? "
+        read -n1 x
+        if [ ! "$x" = "y"] && [ ! "$x" = "Y" ]; then
+            echo "Stop."
+            exit 0
+        fi
         rm -R "$haPath/custom_components/klyqa"
     fi
 
