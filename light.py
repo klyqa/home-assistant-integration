@@ -426,7 +426,10 @@ class KlyqaLight(LightEntity):
             configuration_url=url,
         )
 
-        ## TODO: missing config flow for config entry id
+        ## TODO: missing config flow for config entry id to show device info
+        # https://developers.home-assistant.io/docs/device_registry_index/
+        #
+
         # device_registry = dr.async_get(self.hass)
 
         # device = device_registry.async_get_device(identifiers = {(DOMAIN, self._attr_unique_id)})
@@ -589,7 +592,6 @@ class KlyqaLight(LightEntity):
                 " ".join(args),
             )
 
-            # ret = await self._klyqa_api.local_send_to_bulb(*(args), u_id=self.u_id)
             await self.send_to_bulbs(args)
 
         await asyncio.sleep(0.2)
@@ -638,14 +640,6 @@ class KlyqaLight(LightEntity):
             f" ({self.name})" if self.name else "",
         )
 
-        # entity_registry = er.async_get(self.hass)
-        # re = entity_registry.async_get_entity_id(Platform.LIGHT, DOMAIN, self.unique_id)
-        # ent_id = entity_registry.async_get(re)
-
-        # if ent_id:
-        #     entity_registry.async_update_entity(
-        #         entity_id=ent_id.entity_id, area_id="wohnzimmer"
-        #     )
         try:
             await self.async_update_klyqa()
         except Exception as e:
