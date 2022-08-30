@@ -425,6 +425,19 @@ class KlyqaLight(LightEntity):
             hw_version=self.settings.get("hardwareRevision"),
             configuration_url=url,
         )
+
+        ## TODO: missing config flow for config entry id
+        # device_registry = dr.async_get(self.hass)
+
+        # device = device_registry.async_get_device(identifiers = {(DOMAIN, self._attr_unique_id)})
+
+        # if device:
+
+        #     device_registry.async_update_device(device_id = device.id, **self._attr_device_info)
+
+        # else:
+        #     device_registry.async_get_or_create(config_entry_id=self.config_entry.entry_id, **self._attr_device_info)
+
         # self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
         if self.sync_rooms:
             self.rooms = []
@@ -577,8 +590,9 @@ class KlyqaLight(LightEntity):
             )
 
             # ret = await self._klyqa_api.local_send_to_bulb(*(args), u_id=self.u_id)
-            ret = await self.send_to_bulbs(args)
+            await self.send_to_bulbs(args)
 
+        await asyncio.sleep(0.2)
         args = ["--power", "on"]
 
         if ATTR_TRANSITION in kwargs:
@@ -593,7 +607,7 @@ class KlyqaLight(LightEntity):
             " ".join(args),
         )
 
-        ret = await self.send_to_bulbs(args)
+        await self.send_to_bulbs(args)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -608,7 +622,7 @@ class KlyqaLight(LightEntity):
             f" ({self.name})" if self.name else "",
             " ".join(args),
         )
-        ret = await self.send_to_bulbs(args)
+        await self.send_to_bulbs(args)
 
     async def async_update_klyqa(self):
         """Fetch settings from klyqa cloud account."""
@@ -707,14 +721,12 @@ class KlyqaLight(LightEntity):
         LOGGER.info("Send started!")
         await send_event_cb.wait()
 
-        LOGGER.info("Send startet wait ended!")
+        LOGGER.info("Send started wait ended!")
         try:
-            # await asyncio.wait_for(new_task, timeout=TIMEOUT_SEND)
             await asyncio.wait([new_task], timeout=0.001)
         except asyncio.TimeoutError:
             LOGGER.error("timeout send.")
         pass
-        # await self._klyqa_api.send_to_bulbs(args_parsed, args, timeout_ms=TIMEOUT_SEND)
 
     async def async_update2(self, *args, **kwargs):
         """Fetch new state data for this light. Called by HA."""
