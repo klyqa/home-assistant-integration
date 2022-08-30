@@ -8,7 +8,7 @@ import asyncio
 import socket
 
 from .api import bulb_cli as api
-from .const import DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT
+from .const import DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP
 from datetime import timedelta
 import logging
 
@@ -21,13 +21,18 @@ class HAKlyqaAccount(api.Klyqa_account):
     udp: socket.socket
     tcp: socket.socket
     polling: bool
+    sync_rooms: bool
+    scan_interval_conf: float
 
-    def __init__(self, udp, tcp, username="", password="", host="", hass=None, polling = True):
+    def __init__(self, udp, tcp, username="", password="", host="", hass=None, polling = True, sync_rooms = True, scan_interval = -1.0):
         super().__init__(username, password, host)
         self.hass = hass
         self.udp = udp
         self.tcp = tcp
         self.polling = polling
+        self.sync_rooms = sync_rooms
+        self.scan_interval_conf = scan_interval
+
 
     async def send_to_bulbs(self, args, args_in, async_answer_callback = None, timeout_ms=5000):
         """_send_to_bulbs"""
@@ -47,6 +52,7 @@ class HAKlyqaAccount(api.Klyqa_account):
             #     self.search_lights(broadcast_repetitions=2)
             # )  # , seconds_to_discover=2))
             ha_entities = self.hass.data["light"].entities
+
             for d in self.acc_settings["devices"]:
                 # look if any onboarded device is not in the entity registry.
                 u_id = api.format_uid(d["localDeviceId"])
@@ -58,6 +64,17 @@ class HAKlyqaAccount(api.Klyqa_account):
                 if len(light) == 0:
                     """found klyqa device not in the light entities"""
                     self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, d)
+
+            for d in self.acc_settings["deviceGroups"]:
+                u_id = api.format_uid(d["id"])
+
+                light = [
+                    e for e in ha_entities if hasattr(e, "u_id") and e.u_id == u_id
+                ]
+
+                if len(light) == 0:
+                    """found klyqa device not in the light entities"""
+                    self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, d)
         return True
 
     # async def search_lights(self, broadcast_repetitions=2):
