@@ -191,13 +191,6 @@ class KlyqaLightGroup(LightGroup):
         for e in settings["devices"]:
             uid = api.format_uid(e.get("localDeviceId"))
 
-            # light = [
-            #     e for e in ha_entities if hasattr(e, "u_id") and e.u_id == uid
-            # ]
-
-            # if len(light) == 0:
-            #     raise Exception(f"Missing entity with id {uid}.")
-
             entity_ids.append(ENTITY_ID_FORMAT.format(uid))
 
         super().__init__(entity_id, settings["name"], entity_ids)
