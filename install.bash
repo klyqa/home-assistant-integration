@@ -1,5 +1,5 @@
 #!/bin/bash
-# wget -O - https://github.com/klyqa/home-assistant-integration/install.bash | bash -
+# wget -O - https://raw.githubusercontent.com/klyqa/home-assistant-integration/main/install.bash | bash -
 set -e
 
 all_yes=$1
@@ -75,16 +75,16 @@ if [ -n "$haPath" ]; then
 
     if [ -f "$haPath/configuration.yaml" ]; then
         printf "Add example klyqa config to configuration.yaml (connect your klyqa account in homeassistant) [Y/n]? "
-        read x -n 1
+        read -n1 x
         if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
             cat <<EOF >> $haPath/configuration.yaml
 # light:
-#  - platform: klyqa
-#    username: your_username@yourprovider.com
-#    password: !secret your_password_from_secret.yaml
-#    sync_rooms: True
-#    polling: True
-#    scan_interval: 11
+#   - platform: klyqa
+#     username: your_username@yourprovider.com
+#     password: !secret your_password_from_secret.yaml
+#     sync_rooms: True
+#     polling: True
+#     scan_interval: 11
 EOF
         fi
     else
