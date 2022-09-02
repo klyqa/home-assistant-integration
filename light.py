@@ -27,6 +27,7 @@ import traceback
 from collections.abc import Callable
 import asyncio
 
+from homeassistant.helpers.area_registry import SAVE_DELAY
 TIMEOUT_SEND = 4.4
 
 from homeassistant.components.group.light import LightGroup
@@ -190,13 +191,6 @@ class KlyqaLightGroup(LightGroup):
 
         for e in settings["devices"]:
             uid = api.format_uid(e.get("localDeviceId"))
-
-            # light = [
-            #     e for e in ha_entities if hasattr(e, "u_id") and e.u_id == uid
-            # ]
-
-            # if len(light) == 0:
-            #     raise Exception(f"Missing entity with id {uid}.")
 
             entity_ids.append(ENTITY_ID_FORMAT.format(uid))
 
@@ -427,6 +421,7 @@ class KlyqaLight(LightEntity):
         )
 
         ## TODO: missing config flow for config entry id to show device info
+        # config flow for custom integrations: https://community.home-assistant.io/t/config-flow-with-custom-component/109916/8
         # https://developers.home-assistant.io/docs/device_registry_index/
         #
 
@@ -464,8 +459,15 @@ class KlyqaLight(LightEntity):
 
             if len(self.rooms) > 0:
                 area_reg = ar.async_get(self.hass)
-                # only 1 room supported by ha
-                area = area_reg.async_get_or_create(self.rooms[0].get("name"))
+                # only 1 room supported per device by ha
+                area = area_reg.async_get_area_by_name(self.rooms[0].get("name"))
+                if not area:
+                    area = area_reg.async_get_or_create(self.rooms[0].get("name"))
+                    area_reg._store.async_save(area_reg._data_to_save)
+                    if not area_reg.async_get_area_by_name(self.rooms[0].get("name")):
+                        await asyncio.sleep(SAVE_DELAY)
+                        area = area_reg.async_get_or_create(self.rooms[0].get("name"))
+
                 if area:
                     self._attr_device_info["suggested_area"] = area.name
                     LOGGER.info(f"Add bulb {self.name} to room {area.name}.")

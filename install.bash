@@ -1,6 +1,8 @@
 #!/bin/bash
-# wget -O - https://github.com/klyqa/home-assistant-integration/install.bash | bash -
+# wget -O - https://raw.githubusercontent.com/klyqa/home-assistant-integration/main/install.bash | bash -
 set -e
+
+all_yes=$1
 
 RED_COLOR='\033[0;31m'
 GREEN_COLOR='\033[0;32m'
@@ -58,7 +60,7 @@ if [ -n "$haPath" ]; then
     if [ -d "$haPath/custom_components/klyqa" ]; then
         warn "Klyqa directory already exist, cleaning up [Y/n]? "
         read -n1 x
-        if [ ! "$x" = "y"] && [ ! "$x" = "Y" ]; then
+        if [ ! "$all_yes" = "y" ] && [ ! "$x" = "y"] && [ ! "$x" = "Y" ]; then
             echo "Stop."
             exit 0
         fi
@@ -73,21 +75,21 @@ if [ -n "$haPath" ]; then
 
     if [ -f "$haPath/configuration.yaml" ]; then
         printf "Add example klyqa config to configuration.yaml (connect your klyqa account in homeassistant) [Y/n]? "
-        read x -n 1
-        if [ "$x" = "y" ] || [ "$x" = "Y" ]; then
+        read -n1 x
+        if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
             cat <<EOF >> $haPath/configuration.yaml
 # light:
-#  - platform: klyqa
-#    username: your_username@yourprovider.com
-#    password: !secret your_password_from_secret.yaml
-#    sync_rooms: True
-#    polling: True
-#    scan_interval: 11
+#   - platform: klyqa
+#     username: your_username@yourprovider.com
+#     password: !secret your_password_from_secret.yaml
+#     sync_rooms: True
+#     polling: True
+#     scan_interval: 11
 EOF
         fi
     else
         printf "Cannot find configuration.yaml. Print Klyqa example configuration in the terminal [Y/n]? "
-        if [ "$x" = "y" ] || [ "$x" = "Y" ]; then
+        if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
             cat <<EOF
 light:
   - platform: klyqa
