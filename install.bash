@@ -84,7 +84,7 @@ if [ -n "$haPath" ]; then
 #     password: !secret your_password_from_secret.yaml
 #     sync_rooms: True
 #     polling: True
-#     scan_interval: 11
+#     scan_interval: 120
 EOF
         fi
     else
@@ -98,7 +98,7 @@ light:
     password: !secret your_password_from_secret.yaml
     sync_rooms: True
     polling: True
-    scan_interval: 11
+    scan_interval: 120
 EOF
         fi
     fi

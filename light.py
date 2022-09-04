@@ -144,13 +144,13 @@ async def async_setup_platform(
 
 async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccount:
     """create_klyqa_api_from_config"""
-    username = config.get(CONF_USERNAME)
+    username = str(config.get(CONF_USERNAME))
     component: KlyqaDataCoordinator = hass.data[DOMAIN]
     if username in component.KlyqaAccounts:
         return component.KlyqaAccounts[username]
 
-    password = config.get(CONF_PASSWORD)
-    host = config.get(CONF_HOST)
+    password = str(config.get(CONF_PASSWORD))
+    host = str(config.get(CONF_HOST))
     polling = config.get(CONF_POLLING)
     sync_rooms = config.get(CONF_SYNC_ROOMS) if config.get(CONF_SYNC_ROOMS) else False
     scan_interval = config.get(CONF_SCAN_INTERVAL)
