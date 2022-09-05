@@ -71,7 +71,8 @@ class HAKlyqaAccount(api.Klyqa_account):
 
                 if len(light) == 0:
                     """found klyqa device not in the light entities"""
-                    self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
+                    if len(group["devices"]) > 0 and "productId" in group["devices"][0] and group["devices"][0]["productId"].startswith("@klyqa.lighting"):
+                        self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
         return True
 
 
