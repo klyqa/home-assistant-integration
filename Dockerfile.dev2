@@ -1,0 +1,29 @@
+# See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.245.0/containers/ubuntu/.devcontainer/base.Dockerfile
+
+# [Choice] Ubuntu version (use ubuntu-22.04 or ubuntu-18.04 on local arm64/Apple Silicon): ubuntu-22.04, ubuntu-20.04, ubuntu-18.04
+ARG VARIANT="ubuntu-20.04"
+FROM mcr.microsoft.com/vscode/devcontainers/base:0-${VARIANT}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN dpkg --add-architecture i386 && \
+  apt-get update && apt-get -y --no-install-recommends install \
+    ca-certificates \
+    bzip2 \
+    git \
+    python \
+    vim-common astyle \
+    wget \
+    python3 \
+    python3-pip \
+    python3-pyprind \
+    python3-requests \
+    ssh \
+    && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* && \
+  pip install pycryptodome && \
+  pip install requests && \
+  apt-get clean
+
+ENV TZ=Europe/Berlin
