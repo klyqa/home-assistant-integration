@@ -60,7 +60,7 @@ if [ -n "$haPath" ]; then
     if [ -d "$haPath/custom_components/klyqa" ]; then
         warn "Klyqa directory already exist, cleaning up [Y/n]? "
         read -n1 x; echo
-        if [ ! "$all_yes" = "y" ] && [ ! "$x" = "y"] && [ ! "$x" = "Y" ]; then
+        if [ ! "$all_yes" = "y" ] && [ ! "$x" = "y" ] && [ ! "$x" = "Y" ]; then
             echo "Stop."
             exit 0
         fi

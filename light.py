@@ -133,6 +133,8 @@ async def async_setup_platform(
     #     klyqa: HAKlyqaAccount = hass.data[DOMAIN].klyqa
     # else:
     klyqa = await create_klyqa_api_from_config(hass, config)
+    if not klyqa:
+        return
     await async_setup_klyqa(
         hass,
         config,
@@ -166,11 +168,9 @@ async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccou
         scan_interval=scan_interval,
     )
     component.KlyqaAccounts[username] = klyqa
-    # if not await hass.async_add_executor_job(klyqa.login):
     if not await hass.async_run_job(klyqa.login):
-    # if not await asyncio.run(klyqa.login()):
         LOGGER.error(
-            "Error while trying to start Klyqa Integration from configuration.yaml."
+            "Could Error while trying to start Klyqa Integration from configuration.yaml."
         )
         return
     return klyqa
@@ -236,19 +236,6 @@ async def async_setup_klyqa(
     async def add_new_entity(event: Event) -> None:
 
         device_settings = event.data
-        # for device_settings in klyqa._settings.get("deviceGroups"):
-        #     entities.append(
-        #         KlyqaLight(
-        #             device_settings,
-        #             light_state,
-        #             klyqa,
-        #             entity_id,
-        #             should_poll=True,
-        #             rooms=rooms,
-        #             timers=timers,
-        #             routines=routines,
-        #         )
-        #     )
 
         u_id = api.format_uid(device_settings.get("localDeviceId"))
 
@@ -261,22 +248,6 @@ async def async_setup_klyqa(
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
 
         light_state = klyqa.bulbs[u_id] if u_id in klyqa.bulbs else api.KlyqaBulb()
-
-        # # TODO: perhaps the routines can be put into automations or scenes in HA
-        # routines = []
-        # for routine in klyqa.acc_settings.get("routines"):
-        #     for task in routine.get("tasks"):
-        #         for device in task.get("devices"):
-        #             if device == u_id:
-        #                 routines.append(routine)
-
-        # # TODO: same for timers.
-        # timers = []
-        # for timer in klyqa.acc_settings.get("timers"):
-        #     for task in timer.get("tasks"):
-        #         for device in task.get("devices"):
-        #             if device == u_id:
-        #                 timers.append(timer)
 
         entity = KlyqaLight(
             device_settings,
@@ -348,6 +319,7 @@ class KlyqaLight(LightEntity):
         self._attr_effect_list = []
         self.config_entry = config_entry
         self.send_event_cb: asyncio.Event = asyncio.Event()
+        self.device_config = {}
         pass
         """Entity state will be updated after adding the entity."""
 
@@ -367,7 +339,7 @@ class KlyqaLight(LightEntity):
                 LOGGER.error("Could not load device configuration profile")
                 return
 
-        if "deviceTraits" in self.device_config and (
+        if self.device_config and "deviceTraits" in self.device_config and (
             device_traits := self.device_config.get("deviceTraits")
         ):
             if [
@@ -400,13 +372,15 @@ class KlyqaLight(LightEntity):
         self.settings = device_result[0]
         await self.set_device_capabilities()
 
-        url = (
-            api.PRODUCT_URLS[self.device_config["productId"]]
-            if self.device_config
-            and "productId" in self.device_config
-            and self.device_config["productId"] in api.PRODUCT_URLS
-            else ""
-        )
+        url = ""
+        if self.device_config:
+            url = (
+                api.PRODUCT_URLS[self.device_config["productId"]]
+                if self.device_config
+                and "productId" in self.device_config
+                and self.device_config["productId"] in api.PRODUCT_URLS
+                else ""
+            )
 
         self._attr_name = self.settings.get("name")
         self._attr_unique_id = api.format_uid(self.settings.get("localDeviceId"))
@@ -420,10 +394,7 @@ class KlyqaLight(LightEntity):
             configuration_url=url,
         )
 
-        ## TODO: missing config flow for config entry id to show device info
-        # config flow for custom integrations: https://community.home-assistant.io/t/config-flow-with-custom-component/109916/8
-        # https://developers.home-assistant.io/docs/device_registry_index/
-        #
+        # TODO: add config flow for config entry id to show device info
 
         # device_registry = dr.async_get(self.hass)
 
@@ -526,7 +497,7 @@ class KlyqaLight(LightEntity):
                             ]
                         )
 
-                ret = await self.send_to_bulbs(
+                await self.send_to_bulbs(
                     [
                         "--routine_id",
                         "0",
@@ -539,19 +510,6 @@ class KlyqaLight(LightEntity):
                 )
 
                 await send_event_cb.wait()
-
-                # self.send_answer_cb(msg, uid)
-
-                # await self.send_event_cb.wait()
-
-                # if ret:
-                #     args.extend(
-                #         [
-                #             "--routine_id",
-                #             "0",
-                #             "--routine_start",
-                #         ]
-                #     )
 
         if ATTR_COLOR_TEMP in kwargs:
             self._attr_color_temp = kwargs[ATTR_COLOR_TEMP]
@@ -771,10 +729,6 @@ class KlyqaLight(LightEntity):
             " (" + self.name + ")" if self.name else "",
         )
 
-        # if "error" in state_complete:
-        #     LOGGER.error(state_complete.type)
-        #     return
-
         if state_complete.type == "error":
             LOGGER.error(state_complete.type)
             return
@@ -797,7 +751,7 @@ class KlyqaLight(LightEntity):
                 float(state_complete.color.b),
             )
             self._attr_hs_color = color_util.color_RGB_to_hs(*self._attr_rgb_color)
-        # interpolate brightness from klyqa bulb 0 - 100 percent to homeassistant 0 - 255 points
+
         self._attr_brightness = (float(state_complete.brightness) / 100) * 255
         self._attr_is_on = state_complete.status == "on"
 
