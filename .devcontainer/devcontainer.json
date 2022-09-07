@@ -1,12 +1,13 @@
 {
-
   "name": "HA Int core3 fsqcx220804",
   "build": {
-    "dockerfile": "../Dockerfile.dev"
+    "dockerfile": "../Dockerfile.dev2"
   },
   "runArgs": [
     "-e",
     "GIT_EDITOR=code --wait",
+    "-e",
+    "TZ=Europe/Berlin",
     "--network=ipvlan",
     "--name=vsc-ha-int-core3-220804"
   ],
@@ -30,6 +31,6 @@
     "donjayamanne.git-extension-pack",
     "howardzuo.vscode-git-tags",
     "donjayamanne.python-environment-manager"
-  ],
+  ]
   // "postCreateCommand": "./.devcontainer/postCreateCommand.sh"
 }

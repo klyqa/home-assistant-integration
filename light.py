@@ -28,7 +28,8 @@ from collections.abc import Callable
 import asyncio
 
 from homeassistant.helpers.area_registry import SAVE_DELAY
-TIMEOUT_SEND = 4.4
+# TIMEOUT_SEND = 4.4
+TIMEOUT_SEND = 11
 
 from homeassistant.components.group.light import LightGroup
 
@@ -197,7 +198,6 @@ class KlyqaLightGroup(LightGroup):
         super().__init__(entity_id, settings["name"], entity_ids)
 
 
-
 async def async_setup_klyqa(
     hass: HomeAssistant,
     config: ConfigType,
@@ -212,7 +212,7 @@ async def async_setup_klyqa(
 
     async def on_hass_stop(event):
         """Stop push updates when hass stops."""
-        await klyqa.shutdown()
+        await hass.async_add_executor_job(klyqa.shutdown)
 
     listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
 
@@ -395,29 +395,31 @@ class KlyqaLight(LightEntity):
         )
 
         # TODO: add config flow for config entry id to show device info
+        entity_registry = er.async_get(self.hass)
+        re = entity_registry.async_get_entity_id(Platform.LIGHT, DOMAIN, self.unique_id)
+        entity_registry_entry: EntityRegistry = entity_registry.async_get(re)
 
-        # device_registry = dr.async_get(self.hass)
+        device_registry = dr.async_get(self.hass)
 
-        # device = device_registry.async_get_device(identifiers = {(DOMAIN, self._attr_unique_id)})
+        device = device_registry.async_get_device(identifiers = {(DOMAIN, self._attr_unique_id)})
 
-        # if device:
+        if device:
+            di = self._attr_device_info.copy()
+            del di["identifiers"]
+            device_registry.async_update_device(**{"device_id": device.id, **di})
 
-        #     device_registry.async_update_device(device_id = device.id, **self._attr_device_info)
+        elif self.config_entry:
 
-        # else:
-        #     device_registry.async_get_or_create(config_entry_id=self.config_entry.entry_id, **self._attr_device_info)
+            device_registry.async_get_or_create(**{"config_entry_id": self.config_entry.entry_id, **self._attr_device_info})
 
-        # self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
+        self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
+
         if self.sync_rooms:
             self.rooms = []
             for room in self._klyqa_api.acc_settings.get("rooms"):
                 for device in room.get("devices"):
                     if api.format_uid(device.get("localDeviceId")) == self.u_id:
                         self.rooms.append(room)
-
-            entity_registry = er.async_get(self.hass)
-            re = entity_registry.async_get_entity_id(Platform.LIGHT, DOMAIN, self.unique_id)
-            entity_registry_entry = entity_registry.async_get(re)
 
             if (
                 entity_registry_entry
@@ -434,7 +436,8 @@ class KlyqaLight(LightEntity):
                 area = area_reg.async_get_area_by_name(self.rooms[0].get("name"))
                 if not area:
                     area = area_reg.async_get_or_create(self.rooms[0].get("name"))
-                    area_reg._store.async_save(area_reg._data_to_save)
+                    # try directly save the new area.
+                    await area_reg._store.async_save(area_reg._data_to_save())
                     if not area_reg.async_get_area_by_name(self.rooms[0].get("name")):
                         await asyncio.sleep(SAVE_DELAY)
                         area = area_reg.async_get_or_create(self.rooms[0].get("name"))
@@ -443,10 +446,13 @@ class KlyqaLight(LightEntity):
                     self._attr_device_info["suggested_area"] = area.name
                     LOGGER.info(f"Add bulb {self.name} to room {area.name}.")
 
-                    if entity_registry_entry:
+                    if entity_registry_entry and entity_registry_entry.area_id != area.id:
                         entity_registry.async_update_entity(
                             entity_id=entity_registry_entry.entity_id, area_id=area.id
                         )
+                        # try directly save the changed entity area.
+                        await entity_registry._store.async_save(entity_registry._data_to_save())
+                        print(f"ok: {entity_registry_entry.area_id}")
 
     @property
     def entity_registry_enabled_default(self) -> bool:
@@ -553,8 +559,8 @@ class KlyqaLight(LightEntity):
             )
 
             await self.send_to_bulbs(args)
+            await asyncio.sleep(0.2)
 
-        await asyncio.sleep(0.2)
         args = ["--power", "on"]
 
         if ATTR_TRANSITION in kwargs:
@@ -705,9 +711,14 @@ class KlyqaLight(LightEntity):
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
-        """Set up trigger automation service."""
         await super().async_added_to_hass()
         self._added_klyqa = True
+        # await self.async_update()
+        try:
+            await self.async_update_settings()
+        except Exception as e:
+            LOGGER.error(traceback.format_exc())
+        # self.async_write_ha_state()
 
     def _update_state(self, state_complete: api.KlyqaBulbResponseStatus):
         """Process state request response from the bulb to the entity state."""
