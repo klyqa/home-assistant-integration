@@ -130,6 +130,9 @@ class KlyqaDataCoordinator(EntityComponent):
         self.KlyqaAccounts = {}
         self.get_ports()
 
+        self.entries = {}
+        self.remove_listeners = []
+
     @classmethod
     def instance(
         cls,

@@ -75,8 +75,6 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
         LOGGER, DOMAIN, hass, SCAN_INTERVAL
     )
     await component.async_setup(yaml_config)
-    component.entries = {}
-    component.remove_listeners = []
 
     return True
 
@@ -84,10 +82,10 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     """Set up or change Klyqa integration from a config entry."""
-    username = entry.data.get(CONF_USERNAME)
-    password = entry.data.get(CONF_PASSWORD)
-    host = entry.data.get(CONF_HOST)
-    scan_interval = entry.data.get(CONF_SCAN_INTERVAL)
+    username = str(entry.data.get(CONF_USERNAME))
+    password = str(entry.data.get(CONF_PASSWORD))
+    host = str(entry.data.get(CONF_HOST))
+    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
     global SCAN_INTERVAL
     SCAN_INTERVAL = timedelta(seconds=scan_interval)
     sync_rooms = (
@@ -115,7 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             password,
             host,
             hass,
-            # sync_rooms,
+            sync_rooms,
             # int(hass.data["light"].scan_interval.total_seconds()),
         )
         if not hasattr(component, "entries"):
