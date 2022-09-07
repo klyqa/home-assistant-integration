@@ -38,11 +38,11 @@ from homeassistant.data_entry_flow import FlowResult
 
 
 user_step_data_schema = {
-    vol.Required(CONF_USERNAME, default="frederick.stallmeyer@qconnex.com"): str,
-    vol.Required(CONF_PASSWORD, default="testpwd1"): str,
+    vol.Required(CONF_USERNAME, default=""): cv.string,
+    vol.Required(CONF_PASSWORD, default=""): cv.string,
     vol.Required(CONF_SCAN_INTERVAL, default=60): int,
     vol.Required(CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"): bool,
-    vol.Required(CONF_HOST, default="https://app-api.test.qconnex.io"): str,
+    vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
 }
 
 
@@ -90,9 +90,9 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         pass
 
     def get_klyqa(self) -> HAKlyqaAccount:
-        if self.klyqa:
+        if self.klyqa and self.klyqa.KlyqaAccounts:
             return self.klyqa
-        if not self.hass or not DOMAIN in self.hass.data:
+        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data.KlyqaAccounts:
             return None
         self.klyqa = self.hass.data[DOMAIN]
         return self.hass.data[DOMAIN]
