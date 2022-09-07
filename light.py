@@ -372,16 +372,6 @@ class KlyqaLight(LightEntity):
         self.settings = device_result[0]
         await self.set_device_capabilities()
 
-        url = ""
-        if self.device_config:
-            url = (
-                api.PRODUCT_URLS[self.device_config["productId"]]
-                if self.device_config
-                and "productId" in self.device_config
-                and self.device_config["productId"] in api.PRODUCT_URLS
-                else ""
-            )
-
         self._attr_name = self.settings.get("name")
         self._attr_unique_id = api.format_uid(self.settings.get("localDeviceId"))
         self._attr_device_info = DeviceInfo(
@@ -391,8 +381,12 @@ class KlyqaLight(LightEntity):
             model=self.settings.get("productId"),
             sw_version=self.settings.get("firmwareVersion"),
             hw_version=self.settings.get("hardwareRevision"),
-            configuration_url=url,
+            # configuration_url=url,
         )
+
+        # url = ""
+        if self.device_config and "productId" in self.device_config and self.device_config["productId"] in api.PRODUCT_URLS:
+            self._attr_device_info["configuration_url"] = api.PRODUCT_URLS[self.device_config["productId"]]
 
         # TODO: add config flow for config entry id to show device info
         entity_registry = er.async_get(self.hass)
@@ -412,7 +406,8 @@ class KlyqaLight(LightEntity):
 
             device_registry.async_get_or_create(**{"config_entry_id": self.config_entry.entry_id, **self._attr_device_info})
 
-        self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
+        if entity_registry_entry:
+            self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
 
         if self.sync_rooms:
             self.rooms = []
