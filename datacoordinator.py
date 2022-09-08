@@ -83,6 +83,7 @@ class KlyqaDataCoordinator(EntityComponent):
     KlyqaAccounts: dict[str, HAKlyqaAccount]
     udp: socket.socket
     tcp: socket.socket
+    remove_listeners: list
 
     def __init__(self):
         raise RuntimeError("Call instance() instead")
