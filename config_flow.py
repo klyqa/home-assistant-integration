@@ -29,8 +29,8 @@ from homeassistant.const import (
 from homeassistant.data_entry_flow import FlowResult
 
 # user_step_data_schema = {
-#     vol.Required(CONF_USERNAME, default="frederick.stallmeyer1@qconnex.com"): cv.string,
-#     vol.Required(CONF_PASSWORD, default="testpwd1"): cv.string,
+#     vol.Required(CONF_USERNAME, default=""): cv.string,
+#     vol.Required(CONF_PASSWORD, default=""): cv.string,
 #     vol.Required(CONF_SCAN_INTERVAL, default="60"): cv.string,
 #     vol.Required(CONF_SYNC_ROOMS, default=True): cv.boolean,
 #     vol.Required(CONF_HOST, default="http://localhost:3000"): cv.url,
