@@ -92,7 +92,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def get_klyqa(self) -> HAKlyqaAccount:
         if self.klyqa and self.klyqa.KlyqaAccounts:
             return self.klyqa
-        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data.KlyqaAccounts:
+        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data[DOMAIN].KlyqaAccounts:
             return None
         self.klyqa = self.hass.data[DOMAIN]
         return self.hass.data[DOMAIN]
@@ -153,8 +153,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ):
                 raise Exception("Unable to login")
 
-            if self.klyqa:
-                self.hass.data[DOMAIN] = self.klyqa
+            # if self.klyqa:
+            #     self.hass.data[DOMAIN] = self.klyqa
 
         except (ConnectTimeout, HTTPError):
             LOGGER.error("Unable to connect to Klyqa: %s", ex)
