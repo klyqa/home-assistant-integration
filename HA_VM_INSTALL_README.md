@@ -2,13 +2,17 @@
 
 <br/>
 
-## Virtualbox Home Assistant
+## Home Assistant in Virtualbox
 
 Install Home Assistant in a virtual machine. For example download the vdi image for Virtual Box from:
 
 https://www.home-assistant.io/installation/linux/
 
 Also follow the instructions how to setup the virtual machine on that page.
+
+Run the virtual machine.
+
+Open the browser and go to http://homeassistant.local:8123/ to open the Home Assistant Frontend and setup Home Assistant.
 
 <br/>
 
