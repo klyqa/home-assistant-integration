@@ -29,8 +29,8 @@ from homeassistant.const import (
 from homeassistant.data_entry_flow import FlowResult
 
 # user_step_data_schema = {
-#     vol.Required(CONF_USERNAME, default="frederick.stallmeyer1@qconnex.com"): cv.string,
-#     vol.Required(CONF_PASSWORD, default="testpwd1"): cv.string,
+#     vol.Required(CONF_USERNAME, default=""): cv.string,
+#     vol.Required(CONF_PASSWORD, default=""): cv.string,
 #     vol.Required(CONF_SCAN_INTERVAL, default="60"): cv.string,
 #     vol.Required(CONF_SYNC_ROOMS, default=True): cv.boolean,
 #     vol.Required(CONF_HOST, default="http://localhost:3000"): cv.url,
@@ -92,7 +92,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def get_klyqa(self) -> HAKlyqaAccount:
         if self.klyqa and self.klyqa.KlyqaAccounts:
             return self.klyqa
-        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data.KlyqaAccounts:
+        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data[DOMAIN].KlyqaAccounts:
             return None
         self.klyqa = self.hass.data[DOMAIN]
         return self.hass.data[DOMAIN]
@@ -153,8 +153,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ):
                 raise Exception("Unable to login")
 
-            if self.klyqa:
-                self.hass.data[DOMAIN] = self.klyqa
+            # if self.klyqa:
+            #     self.hass.data[DOMAIN] = self.klyqa
 
         except (ConnectTimeout, HTTPError):
             LOGGER.error("Unable to connect to Klyqa: %s", ex)
