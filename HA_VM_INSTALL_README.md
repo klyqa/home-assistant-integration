@@ -22,12 +22,16 @@ Go to Profile (left bottom button) -> Enable "Advanced Mode"
 
 [![Open your Home Assistant instance and show your Home Assistant user's profile.](https://my.home-assistant.io/badges/profile.svg)](https://my.home-assistant.io/redirect/profile/)
 
+<br/>
+
 Go to Configuration/Settings -> Addons ->
 Then go to the addon store and install "Terminal & SSH".
 
 It will be listed on the left bar after the restart of the Home Assistant or start it from Configuration -> Addons -> Terminal & SSH -> Open.
 
 [![Open your Home Assistant instance and show the Supervisor add-on store.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/)
+
+<br/>
 
 In that terminal enter for installing the Klyqa integration setup following line:
 
@@ -48,6 +52,8 @@ Go to Settings -> Devices & Services -> Integrations and add the Klyqa integrati
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=Klyqa)
 
+<br/>
+
 Fill in your Klyqa login details and set it up.
 
 <br/>
@@ -57,6 +63,8 @@ Fill in your Klyqa login details and set it up.
 Go to the addon store and search for "code" and install VS Code Server.
 
 [![Open your Home Assistant instance and show the Supervisor add-on store.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/)
+
+<br/>
 
 Afterwards open "Studio Code Server" from the left bar and there go to the configuration.yaml file.
 
