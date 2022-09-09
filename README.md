@@ -1,5 +1,7 @@
 # Klyqa Home Assistant Custom Integration
 
+<br />
+
 ## Lamp Support
 - Scene effects
 - Lamp temperature color
@@ -9,6 +11,8 @@
 - Lamp Rooms
 - Klyqa App Cloud synchronisation
 
+<br />
+
 ## Install Home Assistant (HA)
 Local ways to install home assistant:<br />
 1. Docker:<br />
@@ -17,9 +21,11 @@ Make a config folder on your filesystem and tell the docker about the path.<br /
 <br />
 or<br /><br />
 2. Dev container (Visual Studio Code, docker with full debug support):<br />
+
 ```
 git clone https://github.com/home-assistant/core.git
 ```
+
 Your config folder will then be in your cloned folder under config. It will be mapped into the devcontainer. So you can put and change there what you need.<br /><br />
 Open that path in VS Code and hit reopen as a dev container.<br />
 Add to .devcontainer/devcontainer.json runArgs network host mode so you can open and close network sockets:<br />
@@ -30,10 +36,13 @@ Start HA with "start debug" or "run" in VS Code.
 
 or<br /><br />
 3. You have a Hass OS running and have access to it.<br />
+<br />
 
 ## Developer Documentation
 
 https://developers.home-assistant.io/docs/development_environment
+<br />
+<br />
 
 ## Integration
 Put the integration folder into your home assistant config custom_components folder.<br />
@@ -53,6 +62,8 @@ logger:
     # individual log level for the klyqa integration
     custom_components.klyqa: debug
 ```
+<br />
+<br />
 
 ## Start
 Locally you found Home Assistant normally under 127.0.0.1:8123 in you browser.<br />
@@ -75,6 +86,9 @@ using config/secrets.yaml:
 ```
 klyqa_password_identifier: your_password
 ```
+<br />
+<br />
+
 ## Klyqa Lamps in HA
 When the integration is running it should synchronize the klyqa account configuration and search the lamps in the network. They should appear under Configuration > Devices & Services > Devices & Entities.<br /><br />
 Afterwards you add entity cards to the Overview Dashboard a. k. a. "Lovelace".<br />
