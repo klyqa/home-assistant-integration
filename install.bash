@@ -58,7 +58,7 @@ if [ -n "$haPath" ]; then
     cd "$haPath/custom_components" || error "Could not change path to $haPath/custom_components"
 
     if [ -d "$haPath/custom_components/klyqa" ]; then
-        warn "Klyqa directory already exist, cleaning up [Y/n]? "
+        warn "Klyqa Integration Installation found, delete and update it [Y/n]? "
         read -n1 x; echo
         if [ ! "$all_yes" = "y" ] && [ ! "$x" = "y" ] && [ ! "$x" = "Y" ]; then
             echo "Stop."
