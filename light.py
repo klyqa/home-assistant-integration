@@ -213,6 +213,7 @@ async def async_setup_klyqa(
 
     async def on_hass_stop(event):
         """Stop push updates when hass stops."""
+        await klyqa.search_and_send_loop_task_stop()
         await hass.async_add_executor_job(klyqa.shutdown)
 
     listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
