@@ -40,7 +40,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_component import EntityComponent
 
-from .const import DOMAIN, CONF_SYNC_ROOMS, LOGGER
+from .const import CONF_POLLING, DOMAIN, CONF_SYNC_ROOMS, LOGGER
 from homeassistant.helpers.typing import ConfigType
 
 # from .api import Klyqa
@@ -75,6 +75,8 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
         LOGGER, DOMAIN, hass, SCAN_INTERVAL
     )
     await component.async_setup(yaml_config)
+    if Platform.LIGHT in yaml_config and DOMAIN in yaml_config[Platform.LIGHT] and "scan_interval" in yaml_config[Platform.LIGHT][DOMAIN]:
+        component.scan_interval = yaml_config[Platform.LIGHT][DOMAIN]["scan_interval"]
 
     return True
 
@@ -86,12 +88,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     password = str(entry.data.get(CONF_PASSWORD))
     host = str(entry.data.get(CONF_HOST))
     scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
+    polling = bool(entry.data.get(CONF_POLLING))
     global SCAN_INTERVAL
     SCAN_INTERVAL = timedelta(seconds=scan_interval)
     sync_rooms = (
         entry.data.get(CONF_SYNC_ROOMS) if entry.data.get(CONF_SYNC_ROOMS) else False
     )
     component: KlyqaDataCoordinator = hass.data[DOMAIN]
+    component.scan_interval = timedelta(seconds=scan_interval)
     klyqa_api: HAKlyqaAccount = None
     if (
         DOMAIN in hass.data
@@ -104,7 +108,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         klyqa_api.username = username
         klyqa_api.password = password
         klyqa_api.host = host
-        # klyqa_api.sync_rooms = sync_rooms
+        klyqa_api.sync_rooms = sync_rooms
+        klyqa_api.polling=polling,
+        klyqa_api.scan_interval=scan_interval
     else:
         klyqa_api: HAKlyqaAccount = HAKlyqaAccount(
             component.udp,
@@ -113,7 +119,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             password,
             host,
             hass,
-            sync_rooms,
+            sync_rooms=sync_rooms,
+            polling=polling,
+            scan_interval=scan_interval
             # int(hass.data["light"].scan_interval.total_seconds()),
         )
         if not hasattr(component, "entries"):
@@ -147,8 +155,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not unload_ok:
         return unload_ok
 
-    for remove_listener in hass.data[DOMAIN].remove_listeners:
-        remove_listener()
+    while hass.data[DOMAIN].remove_listeners:
+        listener = hass.data[DOMAIN].remove_listeners.pop(-1)
+        try:
+            listener()
+        except:
+            pass
 
     if DOMAIN in hass.data:
         if entry.entry_id in hass.data[DOMAIN].entries:

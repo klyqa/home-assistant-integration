@@ -19,14 +19,22 @@
             "reauth_confirm": {
                 "data": {
                     "password": "Password",
-                    "username": "Email"
+                    "username": "Email",
+                    "sync_rooms": "Synchronize Rooms",
+                    "scan_interval": "Update Bulbs interval",
+                    "polling": "Poll Bulb states",
+                    "host": "Server URL"
                 },
                 "title": "Fill in your Klyqa login information"
             },
             "user": {
                 "data": {
                     "password": "Password",
-                    "username": "Email"
+                    "username": "Email",
+                    "sync_rooms": "Synchronize rooms",
+                    "scan_interval": "Update bulb interval in seconds",
+                    "polling": "Polling bulb state after interval",
+                    "host": "Server URL"
                 },
                 "title": "Fill in your Klyqa login information"
             }

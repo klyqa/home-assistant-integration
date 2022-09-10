@@ -45,14 +45,14 @@ from homeassistant.components.light import (
     COLOR_MODE_BRIGHTNESS,
     COLOR_MODE_COLOR_TEMP,
     COLOR_MODE_RGB,
-    COLOR_MODE_RGBWW,
+    # COLOR_MODE_RGBWW,
     ENTITY_ID_FORMAT,
-    SUPPORT_BRIGHTNESS,
-    SUPPORT_COLOR,
-    SUPPORT_COLOR_TEMP,
+    # SUPPORT_BRIGHTNESS,
+    # SUPPORT_COLOR,
+    # SUPPORT_COLOR_TEMP,
     SUPPORT_EFFECT,
     SUPPORT_TRANSITION,
-    SUPPORT_WHITE_VALUE,
+    # SUPPORT_WHITE_VALUE,
     LightEntity,
 )
 from homeassistant.const import (
@@ -81,7 +81,8 @@ from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
 
 from .const import CONF_POLLING, DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP
 
-SUPPORT_KLYQA = SUPPORT_BRIGHTNESS | SUPPORT_TRANSITION
+# SUPPORT_KLYQA = SUPPORT_BRIGHTNESS | SUPPORT_TRANSITION
+SUPPORT_KLYQA = SUPPORT_TRANSITION
 
 from datetime import timedelta
 import functools as ft
@@ -241,14 +242,14 @@ async def async_setup_klyqa(
 
         entity_id = ENTITY_ID_FORMAT.format(u_id)
 
-        light_c: EntityComponent = hass.data["light"]
-        if light_c.get_entity(entity_id):
-            LOGGER.info(f"Entity {entity_id} is already registered. Skip")
-            return
-        LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
-
         light_state = klyqa.bulbs[u_id] if u_id in klyqa.bulbs else api.KlyqaBulb()
 
+        entity = entity_registry.async_get(entity_id)
+
+        # if not entity_id in hass.data["entity_platform"]["light"][0].entities:
+
+        # if not entity:
+        LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
         entity = KlyqaLight(
             device_settings,
             light_state,
@@ -258,11 +259,17 @@ async def async_setup_klyqa(
             config_entry=entry,
             hass=hass,
         )
-
         await entity.async_update_settings()
+        # await entity.async_update()
         entity._update_state(light_state)
-
         add_entities([entity], True)
+        # else:
+        #     LOGGER.info(f"Entity {entity_id} is already registered. Update it.")
+
+        #     await entity.async_update_settings()
+        #     entity._update_state(light_state)
+
+        # if entity:
 
     hass.data[DOMAIN].remove_listeners.append(
         hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
@@ -348,11 +355,12 @@ class KlyqaLight(LightEntity):
                 if "msg_key" in x and x["msg_key"] == "temperature"
             ]:
                 self._attr_supported_color_modes.add(COLOR_MODE_COLOR_TEMP)
-                self._attr_supported_features |= SUPPORT_COLOR_TEMP
+                # self._attr_supported_features |= SUPPORT_COLOR_TEMP
 
             if [x for x in device_traits if "msg_key" in x and x["msg_key"] == "color"]:
                 self._attr_supported_color_modes.add(COLOR_MODE_RGB)
-                self._attr_supported_features |= SUPPORT_COLOR | SUPPORT_EFFECT
+                # self._attr_supported_features |= SUPPORT_COLOR | SUPPORT_EFFECT
+                self._attr_supported_features |= SUPPORT_EFFECT
                 self._attr_effect_list = [x["label"] for x in api.SCENES]
             else:
                 self._attr_effect_list = [x["label"] for x in api.SCENES if "cwww" in x]

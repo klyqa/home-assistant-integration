@@ -42,6 +42,7 @@ user_step_data_schema = {
     vol.Required(CONF_PASSWORD, default=""): cv.string,
     vol.Required(CONF_SCAN_INTERVAL, default=60): int,
     vol.Required(CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"): bool,
+    vol.Required(CONF_POLLING, default=True): bool,
     vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
 }
 
@@ -87,6 +88,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.scan_interval: int = 30
         self.host: str | None = None
         self.klyqa: HAKlyqaAccount = None
+        self.sync_rooms: bool | None = None
+        self.polling: bool | None = None
         pass
 
     def get_klyqa(self) -> HAKlyqaAccount:
@@ -122,6 +125,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.password = str(user_input[CONF_PASSWORD])
         self.scan_interval = int(user_input[CONF_SCAN_INTERVAL])
         self.sync_rooms = user_input[CONF_SYNC_ROOMS]
+        self.polling = user_input[CONF_POLLING]
         self.host = str(user_input[CONF_HOST])
 
         return await self._async_klyqa_login(step_id="user")
@@ -147,6 +151,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.host,
                 self.hass,
                 sync_rooms=self.sync_rooms,
+                polling=self.polling,
+                scan_interval = self.scan_interval
             )
             if not await self.hass.async_run_job(
                 self.klyqa.login,
@@ -184,6 +190,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_PASSWORD: self.password,
             CONF_SCAN_INTERVAL: self.scan_interval,
             CONF_SYNC_ROOMS: self.sync_rooms,
+            CONF_POLLING: self.polling,
             CONF_HOST: self.host,
         }
         existing_entry = await self.async_set_unique_id(self.username)
