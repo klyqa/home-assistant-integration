@@ -52,7 +52,6 @@ from homeassistant.components.light import (
     # SUPPORT_COLOR_TEMP,
     SUPPORT_EFFECT,
     SUPPORT_TRANSITION,
-    # SUPPORT_WHITE_VALUE,
     LightEntity,
 )
 from homeassistant.const import (
