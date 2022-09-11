@@ -293,7 +293,7 @@ class KlyqaLight(LightEntity):
     _klyqa_device: api.KlyqaBulb
     settings = {}
     """synchronise rooms to HA"""
-    sync_rooms: bool = True
+    sync_rooms: bool = False
     config_entry: ConfigEntry | None = None
     entity_registry: EntityRegistry | None = None
     """entity added finished"""
@@ -316,6 +316,7 @@ class KlyqaLight(LightEntity):
         self.entity_registry = er.async_get(hass)
 
         self._klyqa_api = klyqa_api
+        self.sync_rooms = klyqa_api.sync_rooms
         self.u_id = api.format_uid(settings.get("localDeviceId"))
         self._klyqa_device = device
         self.entity_id = entity_id
