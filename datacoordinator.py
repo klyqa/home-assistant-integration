@@ -1,3 +1,4 @@
+
 from homeassistant.core import HomeAssistant, callback, Event
 from homeassistant.helpers.entity_component import (
     EntityComponent,
@@ -8,7 +9,20 @@ import asyncio
 import socket
 
 from .api import bulb_cli as api
-from .const import DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP
+from .const import (
+    DOMAIN,
+    LOGGER,
+    CONF_POLLING,
+    CONF_SYNC_ROOMS,
+    EVENT_KLYQA_NEW_LIGHT,
+    EVENT_KLYQA_NEW_LIGHT_GROUP
+)
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_HOST,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+)
 from datetime import timedelta
 import logging
 
@@ -39,6 +53,20 @@ class HAKlyqaAccount(api.Klyqa_account):
         ret = await super()._send_to_bulbs(
             args, args_in, self.udp, self.tcp, async_answer_callback = async_answer_callback, timeout_ms=timeout_ms,
         )
+        return ret
+
+    async def login(self, **kwargs) -> bool:
+        ret = await super().login(**kwargs)
+        if ret:
+            integration_data, cached = await api.async_json_cache({
+                CONF_USERNAME: self.username,
+                CONF_PASSWORD: self.password,
+                CONF_SCAN_INTERVAL: self.scan_interval_conf,
+                CONF_SYNC_ROOMS: self.sync_rooms,
+                CONF_POLLING: self.polling,
+                CONF_HOST: self.host}
+                , "last.klyqa_integration_data.cache.json"
+            )
         return ret
 
 
