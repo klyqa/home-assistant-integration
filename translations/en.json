@@ -33,10 +33,30 @@
                     "username": "Email",
                     "sync_rooms": "Synchronize rooms",
                     "scan_interval": "Update bulb interval in seconds",
-                    "polling": "Polling bulb state after interval",
+                    "polling": "Polling bulb states in interval",
                     "host": "Server URL"
                 },
                 "title": "Fill in your Klyqa login information"
+            }
+        }
+    },
+    "options": {
+        "abort": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "password": "Password",
+                    "username": "Email",
+                    "sync_rooms": "Synchronize rooms",
+                    "scan_interval": "Update bulb interval in seconds",
+                    "polling": "Polling bulb state after interval",
+                    "host": "Server URL"
+                },
+                "title": "Your Klyqa integration information"
             }
         }
     }
