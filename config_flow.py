@@ -47,6 +47,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
+            self.username = str(user_input[CONF_USERNAME])
+            self.password = str(user_input[CONF_PASSWORD])
+            self.scan_interval = int(user_input[CONF_SCAN_INTERVAL])
+            self.sync_rooms = user_input[CONF_SYNC_ROOMS]
+            self.polling = user_input[CONF_POLLING]
+            self.host = str(user_input[CONF_HOST])
             # return self.async_create_entry(title="", data=user_input)
             return await self._async_klyqa_login(step_id="user")
 
@@ -62,6 +68,68 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_HOST, default=self.config_entry.data[CONF_HOST]): str,
                 }
             ),
+        )
+
+    async def _async_klyqa_login(self, step_id: str) -> FlowResult:
+        """Handle login with Klyqa."""
+        errors = {}
+
+        try:
+            klyqa: HAKlyqaAccount = HAKlyqaAccount(
+                None,
+                None,
+                self.username,
+                self.password,
+                self.host,
+                self.hass,
+                sync_rooms=self.sync_rooms,
+                polling=self.polling,
+                scan_interval = self.scan_interval
+            )
+            if not await self.hass.async_run_job(
+                klyqa.login,
+            ):
+                raise Exception("Unable to login")
+            self.klyqa = klyqa
+
+        except Exception as ex:
+
+            LOGGER.error("Unable to connect to Klyqa: %s", ex)
+            errors = {"base": "cannot_connect"}
+
+        if not self.klyqa or not self.klyqa.access_token:
+            errors = {"base": "cannot_connect"}
+
+        if errors:
+            return await self._show_setup_form(errors)
+
+        return await self._async_create_entry()
+
+    async def _async_create_entry(self) -> FlowResult:
+        """Create the config entry."""
+        config_data = {
+            CONF_USERNAME: self.username,
+            CONF_PASSWORD: self.password,
+            CONF_SCAN_INTERVAL: self.scan_interval,
+            CONF_SYNC_ROOMS: self.sync_rooms,
+            CONF_POLLING: self.polling,
+            CONF_HOST: self.host,
+        }
+        # existing_entry = await self.async_set_unique_id(self.username)
+
+        # if existing_entry:
+        #     self.hass.config_entries.async_update_entry(
+        #         existing_entry, data=config_data
+        #     )
+        #     # Reload the Klyqa config entry otherwise devices will remain unavailable
+        #     self.hass.async_create_task(
+        #         self.hass.config_entries.async_reload(existing_entry.entry_id)
+        #     )
+
+        #     return self.async_abort(reason="reauth_successful")
+
+        return self.async_create_entry(
+            title=cast(str, self.username), data=config_data
         )
 
 
@@ -270,8 +338,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # coming need generalize login
-    # @staticmethod
-    # @callback
-    # def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
-    #     """Get the options flow for this handler."""
-    #     return OptionsFlowHandler(config_entry)
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
