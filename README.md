@@ -1,5 +1,7 @@
 # Klyqa Home Assistant Custom Integration
 
+[![hacs][hacs-badge]][hacs-url]
+
 <br />
 
 ## Lamp Support
