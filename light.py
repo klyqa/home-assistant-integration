@@ -120,6 +120,7 @@ async def async_setup_entry(
     await async_setup_klyqa(
         hass, entry.data, async_add_entities, entry=entry, klyqa=klyqa
     )
+    return True
 
 
 async def async_setup_platform(
@@ -282,6 +283,7 @@ async def async_setup_klyqa(
     )
 
     await klyqa.update_account()
+    return
 
 
 class KlyqaLight(LightEntity):
