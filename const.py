@@ -2,9 +2,6 @@
 
 import logging
 
-# logging.basicConfig(
-#     format="%(asctime)s %(levelname)-8s %(message)s"
-# )  # , level=logging.INFO
 LOGGER = logging.getLogger(__package__)
 formatter = logging.Formatter(
     "%(asctime)s %(levelname)-8s - %(name)s - %(levelname)s - %(message)s"
@@ -15,9 +12,6 @@ ch.setLevel(level=logging.DEBUG)
 ch.setFormatter(formatter)
 
 LOGGER.addHandler(ch)
-
-# LOGGER.setFormatter(formatter)
-# logging = logging.getLogger(__package__)
 
 DOMAIN = "klyqa"
 

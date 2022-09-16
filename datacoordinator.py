@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_component import (
 import asyncio
 import socket
 
-from .api import bulb_cli as api
+from klyqa_ctl import klyqa_ctl as api
 from .const import (
     DOMAIN,
     LOGGER,
