@@ -277,8 +277,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title=cast(str, self.username), data=config_data
         )
 
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
-        """Get the options flow for this handler."""
-        return OptionsFlowHandler(config_entry)
+    # @staticmethod
+    # @callback
+    # def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
+    #     """Get the options flow for this handler."""
+    #     return OptionsFlowHandler(config_entry)
