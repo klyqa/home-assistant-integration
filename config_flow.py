@@ -5,12 +5,13 @@ from numpy import integer
 
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
-from config.custom_components.klyqa.api.bulb_cli import NoneType
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_entry_flow
 
-from . import api
+# from . import api
+
+from klyqa_ctl import klyqa_ctl as api
 
 from homeassistant.core import callback
 from homeassistant.config_entries import ConfigEntry
@@ -136,7 +137,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.password: str | None = None
         self.cache: str | None = None
         self.scan_interval: int = 30
-        self.host: str | None = NoneType
+        self.host: str | None = None
         self.sync_rooms: bool | None = None
         self.polling: bool | None = None
         self.klyqa: HAKlyqaAccount = None

@@ -46,7 +46,8 @@ from homeassistant.helpers.typing import ConfigType
 # from .api import Klyqa
 # import api.bulb_cli as api
 # from . import api
-from .api import bulb_cli as api
+# from .api import bulb_cli as api
+from klyqa_ctl import klyqa_ctl as api
 from datetime import timedelta
 from .datacoordinator import KlyqaDataCoordinator, HAKlyqaAccount
 

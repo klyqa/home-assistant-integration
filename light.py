@@ -75,7 +75,8 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.util.color as color_util
 from homeassistant.config_entries import ConfigEntry
 
-from .api import bulb_cli as api
+# from .api import bulb_cli as api
+from klyqa_ctl import klyqa_ctl as api
 from . import datacoordinator as coord
 from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
 
