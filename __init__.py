@@ -43,10 +43,7 @@ from homeassistant.helpers.entity_component import EntityComponent
 from .const import CONF_POLLING, DOMAIN, CONF_SYNC_ROOMS, LOGGER
 from homeassistant.helpers.typing import ConfigType
 
-# from .api import Klyqa
-# import api.bulb_cli as api
-# from . import api
-from .api import bulb_cli as api
+from klyqa_ctl import klyqa_ctl as api
 from datetime import timedelta
 from .datacoordinator import KlyqaDataCoordinator, HAKlyqaAccount
 
@@ -60,7 +57,6 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-# TODO List the platforms that you want to support.
 # For your initial PR, limit it to 1 platform.
 PLATFORMS: list[Platform] = [Platform.LIGHT]
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -122,13 +118,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sync_rooms=sync_rooms,
             polling=polling,
             scan_interval=scan_interval
-            # int(hass.data["light"].scan_interval.total_seconds()),
         )
         if not hasattr(component, "entries"):
             component.entries = {}
         component.entries[entry.entry_id] = klyqa_api
 
-    # if not await hass.async_create_task(klyqa_api.login()):
     if not await klyqa_api.login():
         return False
 

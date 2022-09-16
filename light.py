@@ -74,7 +74,8 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.util.color as color_util
 from homeassistant.config_entries import ConfigEntry
 
-from .api import bulb_cli as api
+
+from klyqa_ctl import klyqa_ctl as api
 from . import datacoordinator as coord
 from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
 
@@ -118,6 +119,7 @@ async def async_setup_entry(
     await async_setup_klyqa(
         hass, entry.data, async_add_entities, entry=entry, klyqa=klyqa
     )
+    return True
 
 
 async def async_setup_platform(
@@ -280,6 +282,7 @@ async def async_setup_klyqa(
     )
 
     await klyqa.update_account()
+    return
 
 
 class KlyqaLight(LightEntity):
