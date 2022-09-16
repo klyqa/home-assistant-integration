@@ -9,8 +9,6 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_entry_flow
 
-# from . import api
-
 from klyqa_ctl import klyqa_ctl as api
 
 from homeassistant.core import callback
