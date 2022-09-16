@@ -10,4 +10,4 @@ requests==2.25.1
 unicode_slugify==0.1.5
 voluptuous==0.13.1
 websockets==10.3
-klyqa_ctl>=1.0.1
+klyqa_ctl>=1.0.2
