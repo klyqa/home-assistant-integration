@@ -1,4 +1,4 @@
-"""Platform for light integration."""
+"""Support for klyqa lights."""
 from __future__ import annotations
 
 import json
@@ -28,7 +28,6 @@ from collections.abc import Callable
 import asyncio
 
 from homeassistant.helpers.area_registry import SAVE_DELAY
-# TIMEOUT_SEND = 4.4
 TIMEOUT_SEND = 11
 
 from homeassistant.components.group.light import LightGroup
@@ -45,11 +44,7 @@ from homeassistant.components.light import (
     COLOR_MODE_BRIGHTNESS,
     COLOR_MODE_COLOR_TEMP,
     COLOR_MODE_RGB,
-    # COLOR_MODE_RGBWW,
     ENTITY_ID_FORMAT,
-    # SUPPORT_BRIGHTNESS,
-    # SUPPORT_COLOR,
-    # SUPPORT_COLOR_TEMP,
     SUPPORT_EFFECT,
     SUPPORT_TRANSITION,
     LightEntity,
@@ -81,7 +76,6 @@ from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
 
 from .const import CONF_POLLING, DOMAIN, LOGGER, CONF_SYNC_ROOMS, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP
 
-# SUPPORT_KLYQA = SUPPORT_BRIGHTNESS | SUPPORT_TRANSITION
 SUPPORT_KLYQA = SUPPORT_TRANSITION
 
 from datetime import timedelta
@@ -93,10 +87,6 @@ import homeassistant.helpers.area_registry as area_registry
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     """Expose light control via state machine and services."""
-    # component = hass.data[DOMAIN] = EntityComponent(
-    #     _LOGGER, DOMAIN, hass, SCAN_INTERVAL, GROUP_NAME_ALL_LIGHTS
-    # )
-    # await component.async_setup(config)
     return True
 
 
@@ -131,10 +121,6 @@ async def async_setup_platform(
     """async_setup_platform"""
     klyqa = None
 
-    # if hasattr(hass.data[DOMAIN], "KlyqaAccounts"):
-    # if hasattr(hass.data[DOMAIN], "klyqa"):
-    #     klyqa: HAKlyqaAccount = hass.data[DOMAIN].klyqa
-    # else:
     klyqa = await create_klyqa_api_from_config(hass, config)
     if not klyqa:
         return
@@ -248,9 +234,6 @@ async def async_setup_klyqa(
 
         entity = entity_registry.async_get(entity_id)
 
-        # if not entity_id in hass.data["entity_platform"]["light"][0].entities:
-
-        # if not entity:
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
         entity = KlyqaLight(
             device_settings,
@@ -262,16 +245,8 @@ async def async_setup_klyqa(
             hass=hass,
         )
         await entity.async_update_settings()
-        # await entity.async_update()
         entity._update_state(light_state)
         add_entities([entity], True)
-        # else:
-        #     LOGGER.info(f"Entity {entity_id} is already registered. Update it.")
-
-        #     await entity.async_update_settings()
-        #     entity._update_state(light_state)
-
-        # if entity:
 
     hass.data[DOMAIN].remove_listeners.append(
         hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
@@ -359,11 +334,9 @@ class KlyqaLight(LightEntity):
                 if "msg_key" in x and x["msg_key"] == "temperature"
             ]:
                 self._attr_supported_color_modes.add(COLOR_MODE_COLOR_TEMP)
-                # self._attr_supported_features |= SUPPORT_COLOR_TEMP
 
             if [x for x in device_traits if "msg_key" in x and x["msg_key"] == "color"]:
                 self._attr_supported_color_modes.add(COLOR_MODE_RGB)
-                # self._attr_supported_features |= SUPPORT_COLOR | SUPPORT_EFFECT
                 self._attr_supported_features |= SUPPORT_EFFECT
                 self._attr_effect_list = [x["label"] for x in api.SCENES]
             else:
@@ -393,10 +366,8 @@ class KlyqaLight(LightEntity):
             model=self.settings.get("productId"),
             sw_version=self.settings.get("firmwareVersion"),
             hw_version=self.settings.get("hardwareRevision"),
-            # configuration_url=url,
         )
 
-        # url = ""
         if self.device_config and "productId" in self.device_config and self.device_config["productId"] in api.PRODUCT_URLS:
             self._attr_device_info["configuration_url"] = api.PRODUCT_URLS[self.device_config["productId"]]
 
@@ -720,12 +691,10 @@ class KlyqaLight(LightEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._added_klyqa = True
-        # await self.async_update()
         try:
             await self.async_update_settings()
         except Exception as e:
             LOGGER.error(traceback.format_exc())
-        # self.async_write_ha_state()
 
     def _update_state(self, state_complete: api.KlyqaBulbResponseStatus):
         """Process state request response from the bulb to the entity state."""
