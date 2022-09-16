@@ -72,6 +72,8 @@ if [ -n "$haPath" ]; then
 
     info "Initialize submodules.."
     (cd klyqa && git submodule update --init --recursive)
+    info "Upgrading and install required pip packages.."
+    (cd klyqa && pip install --upgrade -r requirements.txt)
 
     if [ -f "$haPath/configuration.yaml" ]; then
         printf "Add example klyqa config to configuration.yaml (connect your klyqa account in homeassistant) [Y/n]? "
