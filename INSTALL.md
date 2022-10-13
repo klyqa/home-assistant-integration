@@ -36,7 +36,7 @@ It will be listed on the left bar after the restart of the Home Assistant or sta
 In that terminal enter for installing the Klyqa integration setup following line:
 
 ```
-cd /config && wget -O klyqa-install.bash https://raw.githubusercontent.com/klyqa/home-assistant-integration/main/install.bash && bash klyqa-install.bash
+wget -O klyqa-install.bash https://raw.githubusercontent.com/klyqa/home-assistant-integration/main/install.bash && bash klyqa-install.bash
 ```
 
 Follow the steps in the script and restart Home Assistant -> Configuration -> System -> Restart (right top).
