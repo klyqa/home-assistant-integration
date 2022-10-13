@@ -268,7 +268,7 @@ async def async_setup_klyqa(
             hass=hass,
         )
         await entity.async_update_settings()
-        # entity._update_state(light_state)
+        entity._update_state(light_state.status)
         if entity:
             add_entities([entity], True)
 
@@ -664,30 +664,6 @@ class KlyqaLight(LightEntity):
 
         self._update_state(self._klyqa_api.bulbs[self.u_id].status)
 
-    async def send_answer_cb(self, msg: api.Message, uid: str) -> None:
-        """Add callback on answer of the device."""
-        try:
-            LOGGER.debug(f"send_answer_cb {uid}")
-            # ttl ended
-            if uid != self.u_id:
-                return
-            self._update_state(self._klyqa_api.bulbs[self.u_id].status)
-
-            light_c: EntityComponent = self.hass.data["light"] if self.hass else None
-            if not light_c:
-                return
-
-            ent: Entity | None = light_c.get_entity("light." + self.u_id)
-            if ent:
-                ent.schedule_update_ha_state(force_refresh=True)
-        except:  # noqa: E722 pylint: disable=bare-except
-            LOGGER.error(traceback.format_exc())
-        finally:
-            if self.send_event_cb:
-                self.send_event_cb.set()
-
-        pass
-
     async def send_to_bulbs(
         self,
         args: list[Any],
@@ -708,15 +684,7 @@ class KlyqaLight(LightEntity):
                     return
                 self._update_state(self._klyqa_api.bulbs[self.u_id].status)
 
-                light_c: EntityComponent = (
-                    self.hass.data["light"] if self.hass else None
-                )
-                if not light_c:
-                    return
-
-                ent: Entity | None = light_c.get_entity("light." + self.u_id)
-                if ent:
-                    ent.schedule_update_ha_state(force_refresh=True)
+                await self.async_schedule_update_ha_state(force_refresh=True)
             except:  # noqa: E722 pylint: disable=bare-except
                 LOGGER.error(traceback.format_exc())
             finally:

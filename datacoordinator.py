@@ -84,9 +84,9 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         return ret
 
     # pylint: disable=arguments-differ
-    async def login(self, **kwargs) -> bool:
+    async def login(self, print_onboarded_lamps=False) -> bool:
         """Login."""
-        ret = await super().login(**kwargs)
+        ret = await super().login(print_onboarded_lamps=False)
         if ret:
             await api.async_json_cache(
                 {
