@@ -1,7 +1,9 @@
 """Config flow for Klyqa."""
+from __future__ import annotations
 
 from typing import Any, cast
 from numpy import integer
+import asyncio
 
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
@@ -32,18 +34,33 @@ user_step_data_schema = {
     vol.Required(CONF_USERNAME, default=""): cv.string,
     vol.Required(CONF_PASSWORD, default=""): cv.string,
     vol.Required(CONF_SCAN_INTERVAL, default=60): int,
-    vol.Required(CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"): bool,
+    vol.Required(
+        CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"
+    ): bool,
     vol.Required(CONF_POLLING, default=True): bool,
     vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
 }
 
+NoneType = type(None)
+
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry):
+    """Handle a config flow."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
+        self.username = ""
+        self.password = ""
+        self.scan_interval = -1
+        self.sync_rooms = False
+        self.polling = False
+        self.host = ""
+        self.klyqa: HAKlyqaAccount | None = None
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
             self.username = str(user_input[CONF_USERNAME])
@@ -58,19 +75,31 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_USERNAME, default=self.config_entry.data[CONF_USERNAME]): cv.string,
-                    vol.Required(CONF_PASSWORD, default=self.config_entry.data[CONF_PASSWORD]): cv.string,
-                    vol.Required(CONF_POLLING, default=self.config_entry.data[CONF_POLLING]): bool,
-                    vol.Required(CONF_SCAN_INTERVAL, default=self.config_entry.data[CONF_SCAN_INTERVAL]): int,
-                    vol.Required(CONF_SYNC_ROOMS, default=self.config_entry.data[CONF_SYNC_ROOMS]): bool,
-                    vol.Required(CONF_HOST, default=self.config_entry.data[CONF_HOST]): str,
+                    vol.Required(
+                        CONF_USERNAME, default=self.config_entry.data[CONF_USERNAME]
+                    ): cv.string,
+                    vol.Required(
+                        CONF_PASSWORD, default=self.config_entry.data[CONF_PASSWORD]
+                    ): cv.string,
+                    vol.Required(
+                        CONF_POLLING, default=self.config_entry.data[CONF_POLLING]
+                    ): bool,
+                    vol.Required(
+                        CONF_SCAN_INTERVAL,
+                        default=self.config_entry.data[CONF_SCAN_INTERVAL],
+                    ): int,
+                    vol.Required(
+                        CONF_SYNC_ROOMS, default=self.config_entry.data[CONF_SYNC_ROOMS]
+                    ): bool,
+                    vol.Required(
+                        CONF_HOST, default=self.config_entry.data[CONF_HOST]
+                    ): str,
                 }
             ),
         )
 
     async def _async_klyqa_login(self, step_id: str) -> FlowResult:
         """Handle login with Klyqa."""
-        errors = {}
 
         try:
             klyqa: HAKlyqaAccount = HAKlyqaAccount(
@@ -82,24 +111,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 self.hass,
                 sync_rooms=self.sync_rooms,
                 polling=self.polling,
-                scan_interval = self.scan_interval
+                scan_interval=self.scan_interval,
             )
-            if not await self.hass.async_run_job(
+            login = self.hass.async_run_job(
                 klyqa.login,
-            ):
-                raise Exception("Unable to login")
+            )
+            if login:
+                await asyncio.wait_for(login, timeout=30)
             self.klyqa = klyqa
 
-        except Exception as ex:
+        except Exception as ex:  # pylint: disable=bare-except,broad-except
 
             LOGGER.error("Unable to connect to Klyqa: %s", ex)
-            errors = {"base": "cannot_connect"}
-
-        if not self.klyqa or not self.klyqa.access_token:
-            errors = {"base": "cannot_connect"}
-
-        if errors:
-            return await self._show_setup_form(errors)
 
         return await self._async_create_entry()
 
@@ -114,9 +137,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_HOST: self.host,
         }
 
-        return self.async_create_entry(
-            title=cast(str, self.username), data=config_data
-        )
+        return self.async_create_entry(title=self.username, data=config_data)
 
 
 class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -138,10 +159,11 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.host: str | None = None
         self.sync_rooms: bool | None = None
         self.polling: bool | None = None
-        self.klyqa: HAKlyqaAccount = None
+        self.klyqa: HAKlyqaAccount | None = None
         pass
 
-    async def init(self):
+    async def init(self) -> None:
+        """Initialize."""
         if self.inited:
             return
         self.inited = True
@@ -157,15 +179,22 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.sync_rooms = bool(integration_data[CONF_SYNC_ROOMS])
             self.polling = bool(integration_data[CONF_POLLING])
 
-    def get_klyqa(self) -> HAKlyqaAccount:
+    def get_klyqa(self) -> HAKlyqaAccount | NoneType:
         if self.klyqa:
             return self.klyqa
-        if not self.hass or not DOMAIN in self.hass.data or not self.hass.data[DOMAIN].KlyqaAccounts or not len(self.hass.data[DOMAIN].KlyqaAccounts):
+        if (
+            not self.hass
+            or DOMAIN not in self.hass.data
+            or not self.hass.data[DOMAIN].klyqa_accounts
+            or not len(self.hass.data[DOMAIN].klyqa_accounts)
+        ):
             return None
-        self.klyqa = self.hass.data[DOMAIN].KlyqaAccounts[0]
+        self.klyqa = self.hass.data[DOMAIN].klyqa_accounts[0]
         return self.klyqa
 
-    async def _show_setup_form(self, errors=None):
+    async def _show_setup_form(
+        self, errors: dict[Any, Any] | None = None
+    ) -> FlowResult:
         """Show the setup form to the user."""
 
         return self.async_show_form(
@@ -183,13 +212,15 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors or {},
         )
 
-    async def async_step_user(self, user_input=None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle a flow initialized by the user."""
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
-        """ already logged in from platform or other way """
         if self.get_klyqa():
+            # already logged in from platform or other way
             return self.async_abort(reason="single_instance_allowed")
 
         await self.init()
@@ -202,8 +233,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.username = str(user_input[CONF_USERNAME])
         self.password = str(user_input[CONF_PASSWORD])
         self.scan_interval = int(user_input[CONF_SCAN_INTERVAL])
-        self.sync_rooms = user_input[CONF_SYNC_ROOMS]
-        self.polling = user_input[CONF_POLLING]
+        self.sync_rooms = bool(user_input[CONF_SYNC_ROOMS])
+        self.polling = bool(user_input[CONF_POLLING])
         self.host = str(user_input[CONF_HOST])
 
         return await self._async_klyqa_login(step_id="user")
@@ -223,21 +254,24 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.hass,
                 sync_rooms=self.sync_rooms,
                 polling=self.polling,
-                scan_interval = self.scan_interval
+                scan_interval=self.scan_interval,
             )
-            if not await self.hass.async_run_job(
+
+            login = self.hass.async_run_job(
                 klyqa.login,
-            ):
-                raise Exception("Unable to login")
+            )
+            if login:
+                await asyncio.wait_for(login, timeout=30)
+            else:
+                raise Exception()
             self.klyqa = klyqa
 
-        except (ConnectTimeout, HTTPError):
-            LOGGER.error("Unable to connect to Klyqa: %s", ex)
+        except (ConnectTimeout, HTTPError) as exception:
+            LOGGER.error("Unable to connect to Klyqa: %s", exception)
             errors = {"base": "cannot_connect"}
 
-        except Exception as ex:
-
-            LOGGER.error("Unable to connect to Klyqa: %s", ex)
+        except Exception as exception:  # pylint: disable=bare-except,broad-except
+            LOGGER.error("Unable to connect to Klyqa: %s", exception)
             errors = {"base": "cannot_connect"}
 
         if not self.klyqa or not self.klyqa.access_token:
@@ -271,12 +305,11 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             return self.async_abort(reason="reauth_successful")
 
-        return self.async_create_entry(
-            title=cast(str, self.username), data=config_data
-        )
+        return self.async_create_entry(title=self.username, data=config_data)
 
-    # @staticmethod
-    # @callback
-    # def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
-    #     """Get the options flow for this handler."""
-    #     return OptionsFlowHandler(config_entry)
+
+# @staticmethod
+# @callback
+# def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
+#     """Get the options flow for this handler."""
+#     return OptionsFlowHandler(config_entry)
