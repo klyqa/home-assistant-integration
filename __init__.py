@@ -4,22 +4,11 @@
 #
 #                   The Klyqa Home Assistant Integration
 #
-#
 # Company: QConnex GmbH / Klyqa
 #
-#
-# Author: Frederick Stallmeyer
-# E-Mail: frederick.stallmeyer@gmx.de
-#
+# Author: Frederick Stallmeyer <frederick.stallmeyer@gmx.de>
 #
 ###############################################################################
-#
-# Todo:
-#
-#   Warnings:
-#       + Klyqa integration not making unique entity ids.
-#           - Bug occures when entities with same id as in the klyqa account
-#             are definied in the configuration.yaml file
 #
 #   Features:
 #       + On try switchup lamp, search the lamp in the network
@@ -31,7 +20,6 @@
 #
 #   QA:
 #       + Convert magicvalues to constants (commands, arguments, values)
-#
 #
 ##############################################################################
 
@@ -157,10 +145,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
 
-    # unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    # if not unload_ok:
-    #     return unload_ok
+    if not unload_ok:
+        return unload_ok
 
     while hass.data[DOMAIN].remove_listeners:
         listener = hass.data[DOMAIN].remove_listeners.pop(-1)

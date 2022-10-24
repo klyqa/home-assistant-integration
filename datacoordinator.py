@@ -20,6 +20,7 @@ from .const import (
     CONF_SYNC_ROOMS,
     EVENT_KLYQA_NEW_LIGHT,
     EVENT_KLYQA_NEW_LIGHT_GROUP,
+    EVENT_KLYQA_NEW_VC,
 )
 from homeassistant.const import (
     CONF_PASSWORD,
@@ -69,7 +70,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         self,
         args_parsed: Any,
         args_in: Any,
-        timeout_ms: Any = 5000,
+        timeout_ms: Any = 11000,
         async_answer_callback: Any = None,
     ) -> Any:
         """Send_to_bulbs."""
@@ -116,9 +117,6 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             if key == EVENT_KLYQA_NEW_LIGHT or key == EVENT_KLYQA_NEW_LIGHT_GROUP
         ]
         if len(klyqa_new_light_registered) == 2:
-
-            # if EVENT_KLYQA_NEW_LIGHT in self.hass.bus._listeners:
-            ha_entities = self.hass.data["light"].entities
             entity_registry = ent_reg.async_get(self.hass)
 
             for device in self.acc_settings["devices"]:
@@ -129,40 +127,27 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     Platform.LIGHT, DOMAIN, u_id
                 )
 
-                # light = [
-                #     entity
-                #     for entity in ha_entities
-                #     if hasattr(entity, "u_id") and entity.u_id == u_id
-                # ]
-
-                if (
-                    # not registered_entity_id
-                    not self.hass.states.get(ENTITY_ID_FORMAT.format(u_id))
-                ):  #
-                    # if len(light) == 0:
+                if not registered_entity_id or not self.hass.states.get(
+                    ENTITY_ID_FORMAT.format(u_id)
+                ):
                     if device["productId"].startswith("@klyqa.lighting"):
                         """found klyqa device not in the light entities"""
                         self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, device)
 
+                    # if device["productId"].startswith("@klyqa.cleaning"):
+                    #     """found klyqa device not in the light entities"""
+                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
+
             for group in self.acc_settings["deviceGroups"]:
                 u_id = api.format_uid(group["id"])
 
-                # light = [
-                #     entity
-                #     for entity in ha_entities
-                #     if hasattr(entity, "u_id") and entity.u_id == u_id
-                # ]
                 registered_entity_id = entity_registry.async_get_entity_id(
                     Platform.LIGHT, DOMAIN, u_id
                 )
 
-                # if len(light) == 0:
-                if (
-                    # not registered_entity_id
-                    not self.hass.states.get(
-                        ENTITY_ID_FORMAT.format(slugify(group["name"]))
-                    )
-                ):  # self.hass.states.get(ENTITY_ID_FORMAT.format(u_id)):
+                if not registered_entity_id or not self.hass.states.get(
+                    ENTITY_ID_FORMAT.format(slugify(group["name"]))
+                ):
                     """found klyqa device not in the light entities"""
                     if (
                         len(group["devices"]) > 0
