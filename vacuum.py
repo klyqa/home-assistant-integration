@@ -9,8 +9,19 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 
+from homeassistant.components.vacuum import (
+    STATE_CLEANING,
+    STATE_DOCKED,
+    STATE_IDLE,
+    STATE_PAUSED,
+    STATE_RETURNING,
+    StateVacuumEntity,
+    VacuumEntityFeature,
+)
+
 from typing import Any
 
+# from homeassistant.util import dt as slugify
 from homeassistant.util import slugify
 
 from homeassistant.core import HomeAssistant, Event
@@ -28,27 +39,6 @@ import asyncio
 
 from homeassistant.helpers.area_registry import SAVE_DELAY
 
-from homeassistant.components.group.light import LightGroup
-
-from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
-    ATTR_BRIGHTNESS_PCT,
-    ATTR_COLOR_TEMP,
-    ATTR_EFFECT,
-    ATTR_HS_COLOR,
-    ATTR_RGB_COLOR,
-    ATTR_RGBWW_COLOR,
-    ATTR_TRANSITION,
-    # COLOR_MODE_BRIGHTNESS,
-    # COLOR_MODE_COLOR_TEMP,
-    # COLOR_MODE_RGB,
-    ENTITY_ID_FORMAT,
-    ColorMode,
-    # SUPPORT_EFFECT,
-    # SUPPORT_TRANSITION,
-    LightEntity,
-    LightEntityFeature,
-)
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -75,8 +65,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     CONF_SYNC_ROOMS,
-    EVENT_KLYQA_NEW_LIGHT,
-    EVENT_KLYQA_NEW_LIGHT_GROUP,
+    EVENT_KLYQA_NEW_VC,
 )
 
 from datetime import timedelta
@@ -89,7 +78,17 @@ TIMEOUT_SEND = 11
 # PARALLEL_UPDATES = 0
 SCAN_INTERVAL = timedelta(seconds=205)
 
-SUPPORT_KLYQA = LightEntityFeature.TRANSITION
+SUPPORT_KLYQA = (
+    VacuumEntityFeature.BATTERY
+    | VacuumEntityFeature.FAN_SPEED
+    | VacuumEntityFeature.PAUSE
+    | VacuumEntityFeature.RETURN_HOME
+    | VacuumEntityFeature.START
+    | VacuumEntityFeature.STATE
+    | VacuumEntityFeature.STATUS
+    | VacuumEntityFeature.STOP
+    | VacuumEntityFeature.LOCATE
+)
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
@@ -212,13 +211,13 @@ async def async_setup_klyqa(
 ) -> None:
     """Set up the Klyqa Light platform."""
 
-    # klyqa.search_and_send_loop_task = hass.loop.create_task(
-    #     klyqa.search_and_send_to_bulb()
-    # )
+    klyqa.search_and_send_loop_task = hass.loop.create_task(
+        klyqa.search_and_send_to_bulb()
+    )
 
     async def on_hass_stop(event: Event) -> None:
         """Stop push updates when hass stops."""
-        # await klyqa.search_and_send_loop_task_stop()
+        await klyqa.search_and_send_loop_task_stop()
         await hass.async_add_executor_job(klyqa.shutdown)
 
     listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
@@ -258,27 +257,11 @@ async def async_setup_klyqa(
 
         if registered_entity_id and registered_entity_id != entity_id:
             entity_registry.async_remove(str(registered_entity_id))
-        # return
 
         registered_entity_id = entity_registry.async_get_entity_id(
             Platform.LIGHT, DOMAIN, u_id
         )
-        # a = ["286DCD5C6BC7", "68e8deb0cf66b7bfcef4", "286DCD7933E3"]
-        # if (
-        #     # not u_id == "2e383c6ab161610d83f1"
-        #     # and not u_id == slugify("286DCD7933E3") and
-        #     # not u_id
-        #     # == slugify("60865279cb2a7d7a3684")
-        #     # not u_id == slugify("286DCD5C6BC7")
-        #     # and not u_id == slugify("68e8deb0cf66b7bfcef4")
-        #     # and not u_id == slugify("286DCD7933E3")
-        #     len([u_id for u_id2 in a if u_id == slugify(u_id2)])
-        #     == 0
-        # ):
 
-        #     return
-        # if entity:
-        #     return
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
         entity = KlyqaLight(
             device_settings,
@@ -295,18 +278,14 @@ async def async_setup_klyqa(
             add_entities([entity], True)
 
     hass.data[DOMAIN].remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
-    )
-
-    hass.data[DOMAIN].remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT_GROUP, add_new_light_group)
+        hass.bus.async_listen(EVENT_KLYQA_NEW_VC, add_new_entity)
     )
 
     await klyqa.update_account()
     return
 
 
-class KlyqaLight(LightEntity):
+class KlyqaLight(StateVacuumEntity):
     """Representation of the Klyqa light."""
 
     _attr_supported_features = SUPPORT_KLYQA
