@@ -1,5 +1,4 @@
 """Support for Klyqa smart devices."""
-
 ###############################################################################
 #
 #                   The Klyqa Home Assistant Integration
@@ -22,7 +21,6 @@
 #       + Convert magicvalues to constants (commands, arguments, values)
 #
 ##############################################################################
-
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
@@ -34,6 +32,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from datetime import timedelta
 from .datacoordinator import KlyqaDataCoordinator, HAKlyqaAccount
+import klyqa_ctl as klyqa_api
 
 from homeassistant.const import (
     CONF_HOST,
@@ -53,16 +52,20 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     if DOMAIN in hass.data:
         return True
 
+    if not hass.data[DOMAIN].data_communicator:
+        hass.data[DOMAIN].data_communicator = klyqa_api.Data_communicator()
+        hass.data[DOMAIN].data_communicator.bind_ports()
+
     component = hass.data[DOMAIN] = KlyqaDataCoordinator.instance(
         LOGGER, DOMAIN, hass, SCAN_INTERVAL
     )
     await component.async_setup(yaml_config)
-    if (
-        Platform.LIGHT in yaml_config
-        and DOMAIN in yaml_config[Platform.LIGHT]
-        and "scan_interval" in yaml_config[Platform.LIGHT][DOMAIN]
-    ):
-        component.scan_interval = yaml_config[Platform.LIGHT][DOMAIN]["scan_interval"]
+    # if (
+    #     Platform.LIGHT in yaml_config
+    #     and DOMAIN in yaml_config[Platform.LIGHT]
+    #     and "scan_interval" in yaml_config[Platform.LIGHT][DOMAIN]
+    # ):
+    #     component.scan_interval = yaml_config[Platform.LIGHT][DOMAIN]["scan_interval"]
 
     return True
 
@@ -108,10 +111,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         klyqa_api.sync_rooms = sync_rooms
         klyqa_api.polling = (polling,)
         klyqa_api.scan_interval = scan_interval
+        klyqa_api.data_communicator = hass.data[DOMAIN].data_communicator
     else:
         klyqa_api: HAKlyqaAccount = HAKlyqaAccount(
-            component.udp,
-            component.tcp,
+            hass.data[DOMAIN].data_communicator,
+            # component.udp,
+            # component.tcp,
             username,
             password,
             host,
