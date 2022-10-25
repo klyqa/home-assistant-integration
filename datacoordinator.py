@@ -39,16 +39,17 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
 
     hass: HomeAssistant | None
 
-    udp: socket.socket
-    tcp: socket.socket
+    # udp: socket.socket
+    # tcp: socket.socket
     polling: bool
     sync_rooms: bool
     scan_interval_conf: float
 
     def __init__(
         self,
-        udp: Any,
-        tcp: Any,
+        # udp: Any,
+        # tcp: Any,
+        data_communicator: api.Data_communicator,
         username: str = "",
         password: str = "",
         host: str = "",
@@ -58,33 +59,30 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         scan_interval: float = -1.0,
     ):
         """HAKlyqaAccount."""
-        super().__init__(username, password, host)
+        super().__init__(data_communicator, username, password, host)
         self.hass = hass
-        self.udp = udp
-        self.tcp = tcp
+        # self.udp = udp
+        # self.tcp = tcp
         self.polling = polling
         self.sync_rooms = sync_rooms
         self.scan_interval_conf = scan_interval
 
-    async def send_to_bulbs(
-        self,
-        args_parsed: Any,
-        args_in: Any,
-        timeout_ms: Any = 11000,
-        async_answer_callback: Any = None,
-    ) -> Any:
-        """Send_to_bulbs."""
-        ret = await super()._send_to_bulbs(
-            args_parsed,
-            args_in,
-            self.udp,
-            self.tcp,
-            async_answer_callback=async_answer_callback,
-            timeout_ms=timeout_ms,
-        )
-        return ret
+    # async def send_to_bulbs(
+    #     self,
+    #     args_parsed: Any,
+    #     args_in: Any,
+    #     timeout_ms: Any = 11000,
+    #     async_answer_callback: Any = None,
+    # ) -> Any:
+    #     """Send_to_bulbs."""
+    #     ret = await super()._send_to_bulbs(
+    #         args_parsed,
+    #         args_in,
+    #         async_answer_callback=async_answer_callback,
+    #         timeout_ms=timeout_ms,
+    #     )
+    #     return ret
 
-    # pylint: disable=arguments-differ
     async def login(self, print_onboarded_lamps=False) -> bool:
         """Login."""
         ret = await super().login(print_onboarded_lamps=False)

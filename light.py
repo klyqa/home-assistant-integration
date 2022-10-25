@@ -92,11 +92,6 @@ SCAN_INTERVAL = timedelta(seconds=205)
 SUPPORT_KLYQA = LightEntityFeature.TRANSITION
 
 
-async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
-    """Expose light control via state machine and services."""
-    return True
-
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -724,7 +719,7 @@ class KlyqaLight(LightEntity):
 
         LOGGER.info("Send start!")
         new_task = asyncio.create_task(
-            self._klyqa_api.send_to_bulbs(
+            self._klyqa_api._send_to_bulbs(
                 args_parsed,
                 args,
                 async_answer_callback=send_answer_cb,
