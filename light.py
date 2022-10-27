@@ -68,7 +68,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from klyqa_ctl import klyqa_ctl as api
 from . import datacoordinator as coord
-from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
+from .datacoordinator import HAKlyqaAccount
 
 from .const import (
     CONF_POLLING,
@@ -96,23 +96,23 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Async_setup_entry."""
-    klyqa: HAKlyqaAccount | None = None
+    # klyqa: HAKlyqaAccount | None = None
 
-    if not entry.entry_id in hass.data[DOMAIN].entries:
-        hass.data[DOMAIN].entries[entry.entry_id] = await create_klyqa_api_from_config(
-            hass, ConfigType(entry.data)
-        )
-        klyqa = hass.data[DOMAIN].entries[entry.entry_id]
+    # if not entry.entry_id in hass.data[DOMAIN].entries:
+    #     hass.data[DOMAIN].entries[entry.entry_id] = await create_klyqa_api_from_config(
+    #         hass, ConfigType(entry.data)
+    #     )
+    #     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
 
-        if not klyqa or not await hass.async_add_executor_job(klyqa.login):
-            return
+    #     if not klyqa or not await hass.async_add_executor_job(klyqa.login):
+    #         return
 
     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
     if klyqa:
         await async_setup_klyqa(
             hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
         )
-    return True
+    # return True
 
 
 async def async_setup_platform(
@@ -124,55 +124,55 @@ async def async_setup_platform(
     """Async_setup_platform."""
     klyqa = None
 
-    klyqa = await create_klyqa_api_from_config(hass, config)
-    if not klyqa:
-        return
-    await async_setup_klyqa(
-        hass,
-        config,
-        add_entities,
-        klyqa=klyqa,
-        discovery_info=discovery_info,
-    )
+    # klyqa = await create_klyqa_api_from_config(hass, config)
+    # if not klyqa:
+    #     return
+    # await async_setup_klyqa(
+    #     hass,
+    #     config,
+    #     add_entities,
+    #     klyqa=klyqa,
+    #     discovery_info=discovery_info,
+    # )
 
 
-async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccount:
-    """Create_klyqa_api_from_config."""
-    username = str(config.get(CONF_USERNAME))
-    component: KlyqaDataCoordinator = hass.data[DOMAIN]
-    if component and username in component.klyqa_accounts:
-        return component.klyqa_accounts[username]
+# async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccount:
+#     """Create_klyqa_api_from_config."""
+#     username = str(config.get(CONF_USERNAME))
+#     component: KlyqaDataCoordinator = hass.data[DOMAIN]
+#     if component and username in component.klyqa_accounts:
+#         return component.klyqa_accounts[username]
 
-    password = str(config[CONF_PASSWORD])
-    host = str(config[CONF_HOST])
-    polling = config[CONF_POLLING]
-    sync_rooms = config[CONF_SYNC_ROOMS] if config[CONF_SYNC_ROOMS] else False
-    scan_interval = config[CONF_SCAN_INTERVAL]
-    klyqa = HAKlyqaAccount(
-        component.udp,
-        component.tcp,
-        username,
-        password,
-        host,
-        hass,
-        polling,
-        sync_rooms=sync_rooms,
-        scan_interval=scan_interval,
-    )
-    component.klyqa_accounts[username] = klyqa
-    login = hass.async_run_job(klyqa.login)
-    try:
-        if login:
-            await asyncio.wait_for(login, timeout=11)
-        else:
-            raise Exception()
-    except:  # noqa: E722 pylint: disable=bare-except
+#     password = str(config[CONF_PASSWORD])
+#     host = str(config[CONF_HOST])
+#     polling = config[CONF_POLLING]
+#     sync_rooms = config[CONF_SYNC_ROOMS] if config[CONF_SYNC_ROOMS] else False
+#     scan_interval = config[CONF_SCAN_INTERVAL]
+#     klyqa = HAKlyqaAccount(
+#         component.udp,
+#         component.tcp,
+#         username,
+#         password,
+#         host,
+#         hass,
+#         polling,
+#         sync_rooms=sync_rooms,
+#         scan_interval=scan_interval,
+#     )
+#     component.klyqa_accounts[username] = klyqa
+#     login = hass.async_run_job(klyqa.login)
+#     try:
+#         if login:
+#             await asyncio.wait_for(login, timeout=11)
+#         else:
+#             raise Exception()
+#     except:  # noqa: E722 pylint: disable=bare-except
 
-        LOGGER.error(
-            "Could Error while trying to start Klyqa Integration from configuration.yaml"
-        )
-        return None
-    return klyqa
+#         LOGGER.error(
+#             "Could Error while trying to start Klyqa Integration from configuration.yaml"
+#         )
+#         return None
+#     return klyqa
 
 
 class KlyqaLightGroup(LightGroup):
