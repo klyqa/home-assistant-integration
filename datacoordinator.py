@@ -158,79 +158,79 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         return True
 
 
-class KlyqaDataCoordinator(EntityComponent):
-    """KlyqaDataCoordinator."""
+# class KlyqaDataCoordinator(EntityComponent):
+#     """KlyqaDataCoordinator."""
 
-    _instance = None
-    klyqa_accounts: dict[str, HAKlyqaAccount]
-    udp: socket.socket
-    tcp: socket.socket
-    remove_listeners: list
+#     _instance = None
+#     klyqa_accounts: dict[str, HAKlyqaAccount]
+#     udp: socket.socket
+#     tcp: socket.socket
+#     remove_listeners: list
 
-    # pylint: disable = super-init-not-called
-    def __init__(self) -> None:
-        """KlyqaDataCoordinator."""
-        raise RuntimeError("Call instance() instead")
+#     # pylint: disable = super-init-not-called
+#     def __init__(self) -> None:
+#         """KlyqaDataCoordinator."""
+#         raise RuntimeError("Call instance() instead")
 
-    def get_ports(self) -> int:
-        """Get_ports."""
-        try:
-            self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server_address = ("0.0.0.0", 2222)
-            self.udp.bind(server_address)
-            LOGGER.debug("Bound UDP port 2222")
+#     def get_ports(self) -> int:
+#         """Get_ports."""
+#         try:
+#             self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#             self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+#             self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+#             server_address = ("0.0.0.0", 2222)
+#             self.udp.bind(server_address)
+#             LOGGER.debug("Bound UDP port 2222")
 
-        except:  # noqa: E722 pylint: disable=bare-except
-            LOGGER.error(
-                "Error on opening and binding the udp port 2222 on host for initiating the lamp communication"
-            )
-            return 1
+#         except:  # noqa: E722 pylint: disable=bare-except
+#             LOGGER.error(
+#                 "Error on opening and binding the udp port 2222 on host for initiating the lamp communication"
+#             )
+#             return 1
 
-        try:
-            self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server_address = ("0.0.0.0", 3333)
-            self.tcp.bind(server_address)
-            LOGGER.debug("Bound TCP port 3333")
-            self.tcp.listen(1)
+#         try:
+#             self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#             self.tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+#             server_address = ("0.0.0.0", 3333)
+#             self.tcp.bind(server_address)
+#             LOGGER.debug("Bound TCP port 3333")
+#             self.tcp.listen(1)
 
-        except:  # noqa: E722 pylint: disable=bare-except
-            LOGGER.error(
-                "Error on opening and binding the tcp port 3333 on host for initiating the lamp communication"
-            )
-            return 1
-        return 0
+#         except:  # noqa: E722 pylint: disable=bare-except
+#             LOGGER.error(
+#                 "Error on opening and binding the tcp port 3333 on host for initiating the lamp communication"
+#             )
+#             return 1
+#         return 0
 
-    def init(
-        self,
-        logger: logging.Logger,
-        domain: str,
-        hass: HomeAssistant,
-        scan_interval: timedelta = DEFAULT_SCAN_INTERVAL,
-    ) -> None:
-        """__init"""
-        print("Init new instance")
-        super().__init__(logger, domain, hass, scan_interval)
-        self.klyqa_accounts = {}
-        self.get_ports()
+#     def init(
+#         self,
+#         logger: logging.Logger,
+#         domain: str,
+#         hass: HomeAssistant,
+#         scan_interval: timedelta = DEFAULT_SCAN_INTERVAL,
+#     ) -> None:
+#         """__init"""
+#         print("Init new instance")
+#         super().__init__(logger, domain, hass, scan_interval)
+#         self.klyqa_accounts = {}
+#         self.get_ports()
 
-        self.entries = {}
-        self.remove_listeners = []
+#         self.entries = {}
+#         self.remove_listeners = []
 
-    @classmethod
-    def instance(
-        cls,
-        logger: logging.Logger,
-        domain: str,
-        hass: HomeAssistant,
-        scan_interval: timedelta = DEFAULT_SCAN_INTERVAL,
-    ) -> KlyqaDataCoordinator:
-        """instance"""
-        if cls._instance is None:
-            print("Creating new instance")
-            cls._instance = cls.__new__(cls)
-            # Put any initialization here.
-            cls._instance.init(logger, domain, hass, scan_interval)
-        return cls._instance
+#     @classmethod
+#     def instance(
+#         cls,
+#         logger: logging.Logger,
+#         domain: str,
+#         hass: HomeAssistant,
+#         scan_interval: timedelta = DEFAULT_SCAN_INTERVAL,
+#     ) -> KlyqaDataCoordinator:
+#         """instance"""
+#         if cls._instance is None:
+#             print("Creating new instance")
+#             cls._instance = cls.__new__(cls)
+#             # Put any initialization here.
+#             cls._instance.init(logger, domain, hass, scan_interval)
+#         return cls._instance
