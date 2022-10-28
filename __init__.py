@@ -30,6 +30,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_POLLING, DOMAIN, CONF_SYNC_ROOMS, LOGGER
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.entity import Entity
 
 from datetime import timedelta
 from .datacoordinator import HAKlyqaAccount
@@ -59,6 +60,7 @@ class KlyqaData:
         self.entity_ids: set[str | None] = set()
         self.entries: dict[str, ConfigEntry] = {}
         self.remove_listeners: list[Callable] = []
+        self.entities_area_update: dict[str, set[str]] = {}
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
