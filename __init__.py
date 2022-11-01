@@ -34,7 +34,8 @@ from homeassistant.helpers.entity import Entity
 
 from datetime import timedelta
 from .datacoordinator import HAKlyqaAccount
-import klyqa_ctl as klyqa_api
+
+from klyqa_ctl import klyqa_ctl as klyqa_api
 
 from homeassistant.const import (
     CONF_HOST,
@@ -80,9 +81,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
-    host = str(entry.data.get(CONF_HOST))
-    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
-    polling = bool(entry.data.get(CONF_POLLING))
 
     sync_rooms = (
         entry.data.get(CONF_SYNC_ROOMS) if entry.data.get(CONF_SYNC_ROOMS) else False
@@ -113,15 +111,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         account = HAKlyqaAccount(
             klyqa_data.data_communicator,
-            # component.udp,
-            # component.tcp,
             username,
             password,
-            host,
             hass,
-            sync_rooms=sync_rooms,
-            polling=polling,
-            scan_interval=scan_interval,
         )
         if not hasattr(klyqa_data, "entries"):
             klyqa_data.entries = {}
