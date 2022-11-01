@@ -5,7 +5,7 @@
   "documentation": "https://github.com/klyqa/home-assistant-integration",
   "config_flow": true,
   "dependencies": ["network"],
-  "requirements": ["klyqa_ctl==1.0.8"],
+  "requirements": ["klyqa_ctl==1.0.9"],
   "codeowners": [
     "@fraizy22",
     "@klyqa"
