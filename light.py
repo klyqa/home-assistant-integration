@@ -366,8 +366,6 @@ class KlyqaLight(LightEntity):
     _klyqa_api: HAKlyqaAccount
     _klyqa_device: api.KlyqaBulb
     settings: dict[Any, Any] = {}
-    """synchronise rooms to HA"""
-    sync_rooms: bool = False
     config_entry: ConfigEntry | None = None
     entity_registry: EntityRegistry | None = None
     """entity added finished"""
@@ -388,10 +386,8 @@ class KlyqaLight(LightEntity):
     ) -> None:
         """Initialize a Klyqa Light Bulb."""
         self.hass = hass
-        # self.entity_registry = er.async_get(self.hass)
 
         self._klyqa_api = klyqa_api
-        self.sync_rooms = klyqa_api.sync_rooms
         self.u_id = api.format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = api.format_uid(self.u_id)
         self._klyqa_device = device
@@ -509,56 +505,55 @@ class KlyqaLight(LightEntity):
         if entity_registry_entry:
             self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
 
-        if self.sync_rooms:
-            self.rooms = []
-            for room in self._klyqa_api.acc_settings["rooms"]:
-                for device in room["devices"]:
-                    if device and api.format_uid(device["localDeviceId"]) == self.u_id:  # type: ignore[index]
-                        self.rooms.append(room)
+        self.rooms = []
+        for room in self._klyqa_api.acc_settings["rooms"]:
+            for device in room["devices"]:
+                if device and api.format_uid(device["localDeviceId"]) == self.u_id:  # type: ignore[index]
+                    self.rooms.append(room)
 
-            if (
-                entity_registry_entry
-                and entity_registry_entry.area_id
-                and len(self.rooms) == 0
-            ):
-                entity_registry.async_update_entity(
-                    entity_id=entity_registry_entry.entity_id, area_id=""
-                )
+        if (
+            entity_registry_entry
+            and entity_registry_entry.area_id
+            and len(self.rooms) == 0
+        ):
+            entity_registry.async_update_entity(
+                entity_id=entity_registry_entry.entity_id, area_id=""
+            )
 
-            if len(self.rooms) > 0:
-                room = self.rooms[0]["name"]
-                area_reg = ar.async_get(self.hass)
-                # only 1 room supported per device by ha
-                area: AreaEntry | None = area_reg.async_get_area_by_name(room)
-                if not area:
-                    area = area_reg.async_get_or_create(room)
-                    self.hass.data[DOMAIN].entities_area_update.setdefault(
-                        room, set()
-                    ).add(self.entity_id)
-                    # print(f"{self.hass.data[DOMAIN].entities_area_update}")
-                    # try directly save the new area.
+        if len(self.rooms) > 0:
+            room = self.rooms[0]["name"]
+            area_reg = ar.async_get(self.hass)
+            # only 1 room supported per device by ha
+            area: AreaEntry | None = area_reg.async_get_area_by_name(room)
+            if not area:
+                area = area_reg.async_get_or_create(room)
+                self.hass.data[DOMAIN].entities_area_update.setdefault(
+                    room, set()
+                ).add(self.entity_id)
+                # print(f"{self.hass.data[DOMAIN].entities_area_update}")
+                # try directly save the new area.
+                # pylint: disable=protected-access
+                # await area_reg._store.async_save(area_reg._data_to_save())
+                # if not area_reg.async_get_area_by_name(self.rooms[0]["name"]):
+                #     await asyncio.sleep(SAVE_DELAY)
+                #     area = area_reg.async_get_or_create(self.rooms[0]["name"])
+
+            if area:
+                self._attr_device_info["suggested_area"] = area.name
+                LOGGER.info("Add bulb %s to room %s", self.name, area.name)
+
+                if (
+                    entity_registry_entry
+                    and entity_registry_entry.area_id != area.id
+                ):
+                    entity_registry.async_update_entity(
+                        entity_id=entity_registry_entry.entity_id, area_id=area.id
+                    )
+                    # try directly save the changed entity area.
                     # pylint: disable=protected-access
-                    # await area_reg._store.async_save(area_reg._data_to_save())
-                    # if not area_reg.async_get_area_by_name(self.rooms[0]["name"]):
-                    #     await asyncio.sleep(SAVE_DELAY)
-                    #     area = area_reg.async_get_or_create(self.rooms[0]["name"])
-
-                if area:
-                    self._attr_device_info["suggested_area"] = area.name
-                    LOGGER.info("Add bulb %s to room %s", self.name, area.name)
-
-                    if (
-                        entity_registry_entry
-                        and entity_registry_entry.area_id != area.id
-                    ):
-                        entity_registry.async_update_entity(
-                            entity_id=entity_registry_entry.entity_id, area_id=area.id
-                        )
-                        # try directly save the changed entity area.
-                        # pylint: disable=protected-access
-                        await entity_registry._store.async_save(
-                            entity_registry._data_to_save()
-                        )
+                    await entity_registry._store.async_save(
+                        entity_registry._data_to_save()
+                    )
 
     @property
     def entity_registry_enabled_default(self) -> bool:
