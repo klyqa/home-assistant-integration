@@ -30,10 +30,12 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_POLLING, DOMAIN, CONF_SYNC_ROOMS, LOGGER
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.entity import Entity
 
 from datetime import timedelta
 from .datacoordinator import HAKlyqaAccount
-import klyqa_ctl as klyqa_api
+
+from klyqa_ctl import klyqa_ctl as klyqa_api
 
 from homeassistant.const import (
     CONF_HOST,
@@ -59,6 +61,7 @@ class KlyqaData:
         self.entity_ids: set[str | None] = set()
         self.entries: dict[str, ConfigEntry] = {}
         self.remove_listeners: list[Callable] = []
+        self.entities_area_update: dict[str, set[str]] = {}
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
@@ -78,9 +81,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
-    host = str(entry.data.get(CONF_HOST))
-    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
-    polling = bool(entry.data.get(CONF_POLLING))
 
     sync_rooms = (
         entry.data.get(CONF_SYNC_ROOMS) if entry.data.get(CONF_SYNC_ROOMS) else False
@@ -102,24 +102,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         account.username = username
         account.password = password
-        account.host = host
-        account.sync_rooms = sync_rooms
-        account.polling = (polling,)
-        account.scan_interval = scan_interval
         account.data_communicator = klyqa_data.data_communicator
 
     else:
         account = HAKlyqaAccount(
             klyqa_data.data_communicator,
-            # component.udp,
-            # component.tcp,
             username,
             password,
-            host,
             hass,
-            sync_rooms=sync_rooms,
-            polling=polling,
-            scan_interval=scan_interval,
         )
         if not hasattr(klyqa_data, "entries"):
             klyqa_data.entries = {}
