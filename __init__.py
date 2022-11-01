@@ -102,10 +102,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         account.username = username
         account.password = password
-        account.host = host
-        account.sync_rooms = sync_rooms
-        account.polling = (polling,)
-        account.scan_interval = scan_interval
         account.data_communicator = klyqa_data.data_communicator
 
     else:
