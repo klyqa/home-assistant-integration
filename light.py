@@ -259,6 +259,10 @@ async def async_setup_klyqa(
 
         light_state = klyqa.bulbs[u_id] if u_id in klyqa.bulbs else api.KlyqaBulb()
 
+        # Clear status added from cloud when the bulb is not connected to the cloud so offline
+        if not light_state.cloud.connected:
+            light_state.status = None
+
         entity = entity_registry.async_get(entity_id)
 
         registered_entity_id = entity_registry.async_get_entity_id(
@@ -267,27 +271,11 @@ async def async_setup_klyqa(
 
         if registered_entity_id and registered_entity_id != entity_id:
             entity_registry.async_remove(str(registered_entity_id))
-        # return
 
         registered_entity_id = entity_registry.async_get_entity_id(
             Platform.LIGHT, DOMAIN, u_id
         )
-        # a = ["286DCD5C6BC7", "68e8deb0cf66b7bfcef4", "286DCD7933E3"]
-        # if (
-        #     # not u_id == "2e383c6ab161610d83f1"
-        #     # and not u_id == slugify("286DCD7933E3") and
-        #     # not u_id
-        #     # == slugify("60865279cb2a7d7a3684")
-        #     # not u_id == slugify("286DCD5C6BC7")
-        #     # and not u_id == slugify("68e8deb0cf66b7bfcef4")
-        #     # and not u_id == slugify("286DCD7933E3")
-        #     len([u_id for u_id2 in a if u_id == slugify(u_id2)])
-        #     == 0
-        # ):
 
-        #     return
-        # if entity:
-        #     return
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
         entity = KlyqaLight(
             device_settings,
@@ -818,24 +806,14 @@ class KlyqaLight(LightEntity):
 
     def _update_state(self, state_complete: api.KlyqaBulbResponseStatus) -> None:
         """Process state request response from the bulb to the entity state."""
-        # self._attr_state = STATE_OK if state_complete else STATE_UNAVAILABLE
         self._attr_assumed_state = True
-        # if not self._attr_state:
-        #     LOGGER.info(
-        #         "Bulb " + str(self.entity_id) + "%s unavailable.",
-        #         " (" + self.name + ")" if self.name else "",
-        #     )
 
         if not state_complete or not isinstance(
             state_complete, api.KlyqaBulbResponseStatus
         ):
+            self._attr_is_on = False
+            self._attr_assumed_state = False
             return
-
-        # LOGGER.debug(
-        #     "Update bulb state %s%s",
-        #     str(self.entity_id),
-        #     " (" + self.name + ")" if self.name else "",
-        # )
 
         if state_complete.type == "error":
             LOGGER.error(state_complete.type)
