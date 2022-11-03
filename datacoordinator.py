@@ -54,9 +54,9 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         self.hass = hass
         self.polling = polling
 
-    async def login(self, print_onboarded_lamps=False) -> bool:
+    async def login(self, print_onboarded_devices=False) -> bool:
         """Login."""
-        ret = await super().login(print_onboarded_lamps=False)
+        ret = await super().login(print_onboarded_devices=False)
         if ret:
             await api.async_json_cache(
                 {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
