@@ -45,9 +45,8 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-PLATFORMS: list[Platform] = [Platform.LIGHT]
-SCAN_INTERVAL_SECS = 120
-SCAN_INTERVAL = timedelta(seconds=SCAN_INTERVAL_SECS)
+PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
+SCAN_INTERVAL = timedelta(seconds=120)
 
 
 class KlyqaData:
