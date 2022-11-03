@@ -54,9 +54,9 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         self.hass = hass
         self.polling = polling
 
-    async def login(self, print_onboarded_lamps=False) -> bool:
+    async def login(self, print_onboarded_devices=False) -> bool:
         """Login."""
-        ret = await super().login(print_onboarded_lamps=False)
+        ret = await super().login(print_onboarded_devices=False)
         if ret:
             await api.async_json_cache(
                 {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
@@ -96,9 +96,9 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                         """found klyqa device not in the light entities"""
                         self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, device)
 
-                    # if device["productId"].startswith("@klyqa.cleaning"):
-                    #     """found klyqa device not in the light entities"""
-                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
+                    if device["productId"].startswith("@klyqa.cleaning"):
+                        """found klyqa device not in the light entities"""
+                        self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
 
             for group in self.acc_settings["deviceGroups"]:
                 u_id = api.format_uid(group["id"])
@@ -111,6 +111,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     ENTITY_ID_FORMAT.format(slugify(group["name"]))
                 ):
                     """found klyqa device not in the light entities"""
+                    # pass
                     if (
                         len(group["devices"]) > 0
                         and "productId" in group["devices"][0]

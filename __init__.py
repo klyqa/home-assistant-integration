@@ -45,7 +45,7 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-PLATFORMS: list[Platform] = [Platform.LIGHT]
+PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL = timedelta(seconds=120)
 
 
