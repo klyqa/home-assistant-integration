@@ -92,7 +92,7 @@ SUPPORT_KLYQA = (
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
-    """Expose light control via state machine and services."""
+    """Expose vacuum control via state machine and services."""
     return True
 
 
@@ -178,7 +178,7 @@ async def async_setup_klyqa(
 
 
 class KlyqaVC(StateVacuumEntity):
-    """Representation of the Klyqa light."""
+    """Representation of the Klyqa vacuum cleaner."""
 
     _attr_supported_features = SUPPORT_KLYQA
 
