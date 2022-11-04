@@ -1,36 +1,26 @@
 """Klyqa datacoordinator."""
 from __future__ import annotations
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_component import (
-    EntityComponent,
-    DEFAULT_SCAN_INTERVAL,
-)
+
 from homeassistant.helpers import (
     entity_registry as ent_reg,
 )
-from typing import Any
-import socket
 
 from homeassistant.const import Platform
 from klyqa_ctl import klyqa_ctl as api
 from .const import (
     DOMAIN,
-    LOGGER,
-    CONF_POLLING,
-    CONF_SYNC_ROOMS,
     EVENT_KLYQA_NEW_LIGHT,
     EVENT_KLYQA_NEW_LIGHT_GROUP,
     EVENT_KLYQA_NEW_VC,
 )
 from homeassistant.const import (
     CONF_PASSWORD,
-    CONF_HOST,
-    CONF_SCAN_INTERVAL,
     CONF_USERNAME,
 )
-from datetime import timedelta
-import logging
-from homeassistant.components.light import ENTITY_ID_FORMAT
+
+from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
+from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
 from homeassistant.util import slugify
 
 
@@ -85,20 +75,32 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 # look if any onboarded device is not in the entity registry already
                 u_id = api.format_uid(device["localDeviceId"])
 
+                platform: str = ""
+                entity_id: str = ""
+                event: str = ""
+                if device["productId"].startswith("@klyqa.lighting"):
+                    platform = Platform.LIGHT
+                    entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
+                    event = EVENT_KLYQA_NEW_LIGHT
+                elif device["productId"].startswith("@klyqa.cleaning"):
+                    platform = Platform.VACUUM
+                    entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
+                    event = EVENT_KLYQA_NEW_VC
+                else:
+                    continue
                 registered_entity_id = entity_registry.async_get_entity_id(
-                    Platform.LIGHT, DOMAIN, u_id
+                    platform, DOMAIN, u_id
                 )
 
-                if not registered_entity_id or not self.hass.states.get(
-                    ENTITY_ID_FORMAT.format(u_id)
-                ):
-                    if device["productId"].startswith("@klyqa.lighting"):
-                        """found klyqa device not in the light entities"""
-                        self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, device)
+                if not registered_entity_id or not self.hass.states.get(entity_id):
+                    self.hass.bus.fire(event, device)
+                    # if device["productId"].startswith("@klyqa.lighting"):
+                    #     """found klyqa device not in the light entities"""
+                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, device)
 
-                    if device["productId"].startswith("@klyqa.cleaning"):
-                        """found klyqa device not in the light entities"""
-                        self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
+                    # elif device["productId"].startswith("@klyqa.cleaning"):
+                    #     """found klyqa device not in the light entities"""
+                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
 
             for group in self.acc_settings["deviceGroups"]:
                 u_id = api.format_uid(group["id"])
@@ -108,10 +110,9 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 )
 
                 if not registered_entity_id or not self.hass.states.get(
-                    ENTITY_ID_FORMAT.format(slugify(group["name"]))
+                    LIGHT_ENTITY_ID_FORMAT.format(slugify(group["name"]))
                 ):
                     """found klyqa device not in the light entities"""
-                    # pass
                     if (
                         len(group["devices"]) > 0
                         and "productId" in group["devices"][0]
