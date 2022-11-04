@@ -17,12 +17,6 @@ from homeassistant.util import slugify
 from homeassistant.core import HomeAssistant, Event
 
 from homeassistant.const import Platform
-from homeassistant.helpers.entity_component import EntityComponent
-
-from homeassistant.helpers.entity_platform import (
-    async_get_current_platform,
-    EntityPlatform,
-)
 
 
 from homeassistant.util.color import (
@@ -46,13 +40,8 @@ from homeassistant.components.light import (
     ATTR_RGB_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_TRANSITION,
-    # COLOR_MODE_BRIGHTNESS,
-    # COLOR_MODE_COLOR_TEMP,
-    # COLOR_MODE_RGB,
     ENTITY_ID_FORMAT,
     ColorMode,
-    # SUPPORT_EFFECT,
-    # SUPPORT_TRANSITION,
     LightEntity,
     LightEntityFeature,
 )
@@ -78,10 +67,8 @@ from . import datacoordinator as coord, KlyqaData
 from .datacoordinator import HAKlyqaAccount
 
 from .const import (
-    CONF_POLLING,
     DOMAIN,
     LOGGER,
-    CONF_SYNC_ROOMS,
     EVENT_KLYQA_NEW_LIGHT,
     EVENT_KLYQA_NEW_LIGHT_GROUP,
 )
