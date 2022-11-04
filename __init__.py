@@ -28,9 +28,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_POLLING, DOMAIN, CONF_SYNC_ROOMS, LOGGER
+from .const import DOMAIN
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.entity import Entity
 
 from datetime import timedelta
 from .datacoordinator import HAKlyqaAccount
@@ -38,11 +37,9 @@ from .datacoordinator import HAKlyqaAccount
 from klyqa_ctl import klyqa_ctl as klyqa_api
 
 from homeassistant.const import (
-    CONF_HOST,
     CONF_PASSWORD,
     CONF_USERNAME,
     EVENT_HOMEASSISTANT_STOP,
-    CONF_SCAN_INTERVAL,
 )
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
@@ -81,9 +78,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
-    sync_rooms = (
-        entry.data.get(CONF_SYNC_ROOMS) if entry.data.get(CONF_SYNC_ROOMS) else False
-    )
 
     klyqa_data: KlyqaData = hass.data[DOMAIN]
 

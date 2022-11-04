@@ -2,11 +2,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
-from functools import partial
-import json
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 
 from homeassistant.components.vacuum import (
@@ -20,17 +17,12 @@ from homeassistant.components.vacuum import (
     VacuumEntityFeature,
     ENTITY_ID_FORMAT,
 )
-from enum import Enum
 
 from typing import Any
-
-# from homeassistant.util import dt as slugify
-from homeassistant.util import slugify
 
 from homeassistant.core import HomeAssistant, Event
 
 from homeassistant.const import Platform
-from homeassistant.helpers.entity_component import EntityComponent
 
 import traceback
 from collections.abc import Callable
@@ -43,31 +35,22 @@ from homeassistant.const import (
     Platform,
 )
 
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import DeviceInfo, Entity, generate_entity_id
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-import homeassistant.util.color as color_util
 from homeassistant.config_entries import ConfigEntry
 
 
 from klyqa_ctl import klyqa_ctl as api
-from . import datacoordinator as coord
 from .datacoordinator import HAKlyqaAccount
 
 from .const import (
-    CONF_POLLING,
     DOMAIN,
     LOGGER,
-    CONF_SYNC_ROOMS,
     EVENT_KLYQA_NEW_VC,
 )
 
 from datetime import timedelta
-import functools as ft
-
-from homeassistant.helpers.area_registry import AreaEntry, AreaRegistry
-import homeassistant.helpers.area_registry as area_registry
 
 TIMEOUT_SEND = 11
 # PARALLEL_UPDATES = 0
@@ -515,8 +498,8 @@ class KlyqaVC(StateVacuumEntity):
         # VC_WORKSTATUS = [ "SLEEP","STANDBY","CLEANING","CLEANING_AUTO","CLEANING_RANDOM","CLEANING_SROOM","CLEANING_EDGE","CLEANING_SPOT","CLEANING_COMP",
         # "DOCKING","CHARGING","CHARGING_DC","CHARGING_COMP","ERROR" ]
         status = {
-            api.VC_WORKSTATUS.SLEEP: None,
-            api.VC_WORKSTATUS.STANDBY: None,
+            api.VC_WORKSTATUS.SLEEP: STATE_IDLE,
+            api.VC_WORKSTATUS.STANDBY: STATE_PAUSED,
             api.VC_WORKSTATUS.CLEANING: STATE_CLEANING,
             api.VC_WORKSTATUS.CLEANING_AUTO: STATE_CLEANING,
             api.VC_WORKSTATUS.CLEANING_RANDOM: STATE_CLEANING,
@@ -526,7 +509,7 @@ class KlyqaVC(StateVacuumEntity):
             api.VC_WORKSTATUS.CLEANING_COMP: STATE_CLEANING,
             api.VC_WORKSTATUS.DOCKING: STATE_RETURNING,
             api.VC_WORKSTATUS.CHARGING: STATE_DOCKED,
-            api.VC_WORKSTATUS.CHARGING_DC: STATE_DOCKED,
+            api.VC_WORKSTATUS.CHARGING_DC: STATE_IDLE,
             api.VC_WORKSTATUS.CHARGING_COMP: STATE_DOCKED,
             api.VC_WORKSTATUS.ERROR: STATE_ERROR,
         }

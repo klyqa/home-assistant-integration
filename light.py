@@ -10,9 +10,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from collections.abc import ValuesView
 
-from typing import Any, cast
-
-from homeassistant.util import slugify
+from typing import Any
 
 from homeassistant.core import HomeAssistant, Event
 
@@ -46,16 +44,11 @@ from homeassistant.components.light import (
     LightEntityFeature,
 )
 from homeassistant.const import (
-    CONF_HOST,
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    CONF_SCAN_INTERVAL,
     EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
 
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import DeviceInfo, Entity, generate_entity_id
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.util.color as color_util
@@ -63,7 +56,7 @@ from homeassistant.config_entries import ConfigEntry
 
 
 from klyqa_ctl import klyqa_ctl as api
-from . import datacoordinator as coord, KlyqaData
+from . import datacoordinator as KlyqaData
 from .datacoordinator import HAKlyqaAccount
 
 from .const import (
