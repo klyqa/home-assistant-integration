@@ -54,21 +54,18 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             )
         return ret
 
-    async def update_account(self) -> bool:
+    async def update_account(self, device_type: str) -> bool:
         """Update_account."""
 
-        await self.request_account_settings()
-        await self.process_account_settings()
+        # await self.request_account_settings()
+        await self.request_account_settings_eco()
 
-    async def process_account_settings(self) -> None:
+        await self.process_account_settings(device_type)
+
+    async def process_account_settings(self, device_type: str) -> None:
         """Process_account_settings."""
 
-        klyqa_new_light_registered = [
-            key
-            for key, _ in self.hass.bus.async_listeners().items()
-            if key == EVENT_KLYQA_NEW_LIGHT or key == EVENT_KLYQA_NEW_LIGHT_GROUP
-        ]
-        if len(klyqa_new_light_registered) == 2:
+        def sync_account_devices_with_ha_entities(device_type: str) -> None:
             entity_registry = ent_reg.async_get(self.hass)
 
             for device in self.acc_settings["devices"]:
@@ -78,11 +75,15 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 platform: str = ""
                 entity_id: str = ""
                 event: str = ""
-                if device["productId"].startswith("@klyqa.lighting"):
+                if device_type == "light" and device["productId"].startswith(
+                    "@klyqa.lighting"
+                ):
                     platform = Platform.LIGHT
                     entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_LIGHT
-                elif device["productId"].startswith("@klyqa.cleaning"):
+                elif device_type == "vacuum" and device["productId"].startswith(
+                    "@klyqa.cleaning"
+                ):
                     platform = Platform.VACUUM
                     entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_VC
@@ -94,31 +95,44 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
 
                 if not registered_entity_id or not self.hass.states.get(entity_id):
                     self.hass.bus.fire(event, device)
-                    # if device["productId"].startswith("@klyqa.lighting"):
-                    #     """found klyqa device not in the light entities"""
-                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT, device)
 
-                    # elif device["productId"].startswith("@klyqa.cleaning"):
-                    #     """found klyqa device not in the light entities"""
-                    #     self.hass.bus.fire(EVENT_KLYQA_NEW_VC, device)
+            if device_type == "light":
+                for group in self.acc_settings["deviceGroups"]:
+                    u_id = api.format_uid(group["id"])
 
-            for group in self.acc_settings["deviceGroups"]:
-                u_id = api.format_uid(group["id"])
+                    registered_entity_id = entity_registry.async_get_entity_id(
+                        Platform.LIGHT, DOMAIN, slugify(group["name"]) # u_id
+                    )
 
-                registered_entity_id = entity_registry.async_get_entity_id(
-                    Platform.LIGHT, DOMAIN, u_id
-                )
-
-                if not registered_entity_id or not self.hass.states.get(
-                    LIGHT_ENTITY_ID_FORMAT.format(slugify(group["name"]))
-                ):
-                    """found klyqa device not in the light entities"""
-                    if (
-                        len(group["devices"]) > 0
-                        and "productId" in group["devices"][0]
-                        and group["devices"][0]["productId"].startswith(
-                            "@klyqa.lighting"
-                        )
+                    if not registered_entity_id or not self.hass.states.get(
+                        LIGHT_ENTITY_ID_FORMAT.format(slugify(group["name"]))
                     ):
-                        self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
+                        """found klyqa device not in the light entities"""
+                        if (
+                            len(group["devices"]) > 0
+                            and "productId" in group["devices"][0]
+                            and group["devices"][0]["productId"].startswith(
+                                "@klyqa.lighting"
+                            )
+                        ):
+                            self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
+
+        if device_type == "light":
+            klyqa_new_light_registered = [
+                key
+                for key, _ in self.hass.bus.async_listeners().items()
+                if key == EVENT_KLYQA_NEW_LIGHT or key == EVENT_KLYQA_NEW_LIGHT_GROUP
+            ]
+            if len(klyqa_new_light_registered) == 2:
+                sync_account_devices_with_ha_entities(device_type)
+
+        elif device_type == "vacuum":
+            klyqa_new_light_registered = [
+                key
+                for key, _ in self.hass.bus.async_listeners().items()
+                if key == EVENT_KLYQA_NEW_VC
+            ]
+            if len(klyqa_new_light_registered) == 1:
+                sync_account_devices_with_ha_entities(device_type)
+
         return True
