@@ -216,7 +216,13 @@ class KlyqaVC(StateVacuumEntity):
         self.device_config: api.Device_config = {}
         self.settings = {}
 
-        self._attr_fan_speed_list = [member.name for member in api.VC_SUCTION_STRENGTHS]
+        self._attr_fan_speed_list = [
+            api.VC_SUCTION_STRENGTHS.NULL.name,
+            api.VC_SUCTION_STRENGTHS.SMALL.name,
+            api.VC_SUCTION_STRENGTHS.NORMAL.name,
+            api.VC_SUCTION_STRENGTHS.STRONG.name,
+            api.VC_SUCTION_STRENGTHS.MAX.name,
+        ]
         self._state = None
         self._attr_battery_level = 0
         self.state_complete: KlyqaVCResponseStatus = None
@@ -333,7 +339,7 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_api.request_account_settings_eco()
+        await self._klyqa_api.request_account_settings()  # _settings_eco()
         if self._added_klyqa:
             await self._klyqa_api.process_account_settings(device_type="vacuum")
         await self.async_update_settings()
@@ -366,8 +372,11 @@ class KlyqaVC(StateVacuumEntity):
 
     async def async_locate(self, **kwargs: Any) -> None:
         """Locate the vacuum cleaner."""
-
-        await self.send_to_devices(["set", "--beeping", "on"])
+        set: str = "on"
+        if self._klyqa_api.devices[self.u_id].status.beeping == "on":
+            # if self.state_complete and self.state_complete["beeping"] == "on":
+            set = "off"
+        await self.send_to_devices(["set", "--beeping", set])
 
     async def async_set_fan_speed(self, fan_speed: str, **kwargs: Any) -> None:
         """Set fan speed.
@@ -485,28 +494,32 @@ class KlyqaVC(StateVacuumEntity):
             int(state_complete.battery) if state_complete.battery else 0
         )
 
-        status: dict[str, str] = {
-            api.VC_WORKSTATUS.SLEEP: STATE_IDLE,
-            api.VC_WORKSTATUS.STANDBY: STATE_PAUSED,
-            api.VC_WORKSTATUS.CLEANING: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_AUTO: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_RANDOM: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_SROOM: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_EDGE: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_SPOT: STATE_CLEANING,
-            api.VC_WORKSTATUS.CLEANING_COMP: STATE_CLEANING,
-            api.VC_WORKSTATUS.DOCKING: STATE_RETURNING,
-            api.VC_WORKSTATUS.CHARGING: STATE_DOCKED,
-            api.VC_WORKSTATUS.CHARGING_DC: STATE_IDLE,  # CHARGING_DC might be unused by device
-            api.VC_WORKSTATUS.CHARGING_COMP: STATE_DOCKED,
-            api.VC_WORKSTATUS.ERROR: STATE_ERROR,
-        }
+        status: list[str] = [
+            STATE_IDLE,  #     api.VC_WORKINGSTATUS.SLEEP: STATE_IDLE,
+            STATE_PAUSED,  #     api.VC_WORKINGSTATUS.STANDBY: STATE_PAUSED,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_AUTO: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_RANDOM: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_SROOM: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_EDGE: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_SPOT: STATE_CLEANING,
+            STATE_CLEANING,  #     api.VC_WORKINGSTATUS.CLEANING_COMP: STATE_CLEANING,
+            STATE_RETURNING,  #     api.VC_WORKINGSTATUS.DOCKING: STATE_RETURNING,
+            STATE_DOCKED,  #     api.VC_WORKINGSTATUS.CHARGING: STATE_DOCKED,
+            STATE_IDLE,  # CHARGING_DC might be unused by device#     api.VC_WORKINGSTATUS.CHARGING_DC: STATE_IDLE,  # CHARGING_DC might be unused by device
+            STATE_DOCKED,  #     api.VC_WORKINGSTATUS.CHARGING_COMP: STATE_DOCKED,
+            STATE_ERROR,  #     api.VC_WORKINGSTATUS.ERROR: STATE_ERROR,
+        ]
         self._state = (
-            status[state_complete.workstatus]
-            if state_complete.workstatus in status
+            status[state_complete.workingstatus - 1]
+            if state_complete.workingstatus in status
             else None
         )
-        self._attr_fan_speed = state_complete.suction
+        # retranslate our suction ids to HA
+        sp = self._attr_fan_speed_list.index(
+            list(api.VC_SUCTION_STRENGTHS)[state_complete.suction].name
+        )
+        self._attr_fan_speed = sp
 
         self._attr_is_on = state_complete.power == "on"
 

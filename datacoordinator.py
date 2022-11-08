@@ -57,8 +57,8 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
     async def update_account(self, device_type: str) -> bool:
         """Update_account."""
 
-        # await self.request_account_settings()
-        await self.request_account_settings_eco()
+        await self.request_account_settings()
+        # await self.request_account_settings_eco()
 
         await self.process_account_settings(device_type)
 
@@ -101,7 +101,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     u_id = api.format_uid(group["id"])
 
                     registered_entity_id = entity_registry.async_get_entity_id(
-                        Platform.LIGHT, DOMAIN, slugify(group["name"]) # u_id
+                        Platform.LIGHT, DOMAIN, slugify(group["name"])  # u_id
                     )
 
                     if not registered_entity_id or not self.hass.states.get(
