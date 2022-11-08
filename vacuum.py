@@ -339,7 +339,7 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_api.request_account_settings_eco()
+        await self._klyqa_api.request_account_settings()  # _settings_eco()
         if self._added_klyqa:
             await self._klyqa_api.process_account_settings(device_type="vacuum")
         await self.async_update_settings()
