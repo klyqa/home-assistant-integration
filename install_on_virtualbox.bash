@@ -53,7 +53,7 @@ error=false
         echo "You should have a HACS tab in the left bar then, click there, go to Integrations and on the right top hit the three dot Menu and click on add"
         echo " custom repository. There enter: \"https://github.com/klyqa/home-assistant-integration\" and Category \"Integration\"."
         echo "If it's added to the listed repositories, you close the dialog and click on the right bottom on search and download from repositories."
-        echo "Search there for Klyqa and add it."
+        echo "Search there for Klyqa and add it. Restart Home Assistant."
         echo "After installation you should be able to add the klyqa integration in Configuration > Devices & Services > + Add Integration > \"Klyqa\"."
 
     fi
