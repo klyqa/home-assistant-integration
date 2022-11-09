@@ -30,7 +30,7 @@ from homeassistant.const import (
 )
 from homeassistant.data_entry_flow import FlowResult
 
-user_step_data_schema = {
+user_step_data_schema =  vol.Schema({
     vol.Required(CONF_USERNAME, default=""): cv.string,
     vol.Required(CONF_PASSWORD, default=""): cv.string,
     vol.Required(CONF_SCAN_INTERVAL, default=60): int,
@@ -39,7 +39,7 @@ user_step_data_schema = {
     ): bool,
     vol.Required(CONF_POLLING, default=True): bool,
     vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
-}
+})
 
 NoneType = type(None)
 
@@ -170,6 +170,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         integration_data, cached = await api.async_json_cache(
             None, "last.klyqa_integration_data.cache.json"
         )
+        if not self.host:
+            self.host = "https://app-api.prod.qconnex.io"
         if cached:
 
             self.username = str(integration_data[CONF_USERNAME])
