@@ -683,8 +683,9 @@ class KlyqaLight(LightEntity):
                 if uid != self.u_id:
                     return
                 self._update_state(self._klyqa_api.bulbs[self.u_id].status)
-
-                await self.async_schedule_update_ha_state(force_refresh=True)
+                if self._added_klyqa:
+                    self.schedule_update_ha_state()
+                # await self.async_schedule_update_ha_state(force_refresh=True)
             except:  # noqa: E722 pylint: disable=bare-except
                 LOGGER.error(traceback.format_exc())
             finally:
