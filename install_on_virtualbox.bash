@@ -31,15 +31,40 @@ sudo qemu-nbd -c $dev $vdi
 tmp=$(mktemp -d)
 sudo mount ${dev}p8 $tmp
 
+error=false
+
 (cd $tmp/supervisor/homeassistant; mkdir -p custom_components/ && cd custom_components
-rm -rf klyqa
-git clone https://github.com/klyqa/home-assistant-integration klyqa
-# wget -O - https://get.hacs.xyz | bash -
-)
+    rm -rf klyqa
+    printf "Do you want to install Klyqa Home Assistant Integration directly or managed via Home Assistant Community Store"
+    printf " (HACS, you get update hints on new releases on the Klyqa Integration from the Github repository with HACS) [k/H] ? "
+    read x
+    if [ "$x" = "k"]; then
+        git clone https://github.com/klyqa/home-assistant-integration klyqa
+        echo
+        echo "Installation of Klyqa integration finished."
+        echo "When you have started the virtualbox Home Assistant Machine and went to http://homeassistant.local:8123/ and setted up your Home Assistant,"
+        echo "please go to Configuration > Devices & Services > + Add Integration > enter \"Klyqa\" and add the Integration."
+    elif [ "$x" = "H" ] || [ -z "$x" ]; then
+        wget -O - https://get.hacs.xyz | bash - || { echo "Error during HACS installation."; exit 1; }
+        echo
+        echo "Installation of HACS finished."
+        echo "When you have started the virtualbox Home Assistant Machine and went to http://homeassistant.local:8123/ and setted up your Home Assistant,"
+        echo "please go to Configuration > Devices & Services > + Add Integration > enter \"HACS\" and add the Integration."
+        echo "You should have a HACS tab in the left bar then, click there, go to Integrations and on the right top hit the three dot Menu and click on add"
+        echo " custom repository. There enter: \"https://github.com/klyqa/home-assistant-integration\" and Category \"Integration\"."
+        echo "If it's added to the listed repositories, you close the dialog and click on the right bottom on search and download from repositories."
+        echo "Search there for Klyqa and add it."
+        echo "After installation you should be able to add the klyqa integration in Configuration > Devices & Services > + Add Integration > \"Klyqa\"."
+
+    fi
+) || error=true
 
 umount $tmp
 sudo qemu-nbd -d ${dev}
 
-echo "Please look on the home assistant virtualbox installation configuration to set the right settings for the virtualbox."
-echo "The link to look might be: https://www.home-assistant.io/installation/linux"
+if ! $error; then
+  echo
+  echo "Please look on the home assistant virtualbox installation configuration to set the right settings for the virtualbox machine."
+  echo "The link to look might be: https://www.home-assistant.io/installation/linux"
+fi
 
