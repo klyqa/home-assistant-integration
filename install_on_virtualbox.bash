@@ -31,9 +31,10 @@ sudo qemu-nbd -c $dev $vdi
 tmp=$(mktemp -d)
 sudo mount ${dev}p8 $tmp
 
-(cd $tmp/supervisor/homeassistant/mkdir -p custom_components/ && cd custom_components
+(cd $tmp/supervisor/homeassistant; mkdir -p custom_components/ && cd custom_components
 rm -rf klyqa
 git clone https://github.com/klyqa/home-assistant-integration klyqa
+# wget -O - https://get.hacs.xyz | bash -
 )
 
 umount $tmp
@@ -41,3 +42,4 @@ sudo qemu-nbd -d ${dev}
 
 echo "Please look on the home assistant virtualbox installation configuration to set the right settings for the virtualbox."
 echo "The link to look might be: https://www.home-assistant.io/installation/linux"
+
