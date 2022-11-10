@@ -57,7 +57,8 @@ from homeassistant.config_entries import ConfigEntry
 
 from klyqa_ctl import klyqa_ctl as api
 from . import datacoordinator as KlyqaData
-from .datacoordinator import HAKlyqaAccount
+
+from . import HAKlyqaAccount
 
 from .const import (
     DOMAIN,
@@ -666,25 +667,25 @@ class KlyqaLight(LightEntity):
     ) -> None:
         """Send_to_bulbs."""
 
-        send_event_cb: asyncio.Event = asyncio.Event()
+        # send_event_cb: asyncio.Event = asyncio.Event()
 
         async def send_answer_cb(msg: api.Message, uid: str) -> None:
-            nonlocal callback, send_event_cb
+            nonlocal callback  # , send_event_cb
             if callback is not None:
                 await callback(msg, uid)
-            try:
-                LOGGER.debug("Send_answer_cb %s", str(uid))
-                # ttl ended
-                if uid != self.u_id:
-                    return
-                self._update_state(self._klyqa_api.devices[self.u_id].status)
-                if self._added_klyqa:
-                    self.schedule_update_ha_state()  # force_refresh=True)
-                # self.async_schedule_update_ha_state(force_refresh=True)
-            except:  # noqa: E722 pylint: disable=bare-except
-                LOGGER.error(traceback.format_exc())
-            finally:
-                send_event_cb.set()
+            # try:
+            LOGGER.debug("Send_answer_cb %s", str(uid))
+            # ttl ended
+            if uid != self.u_id:
+                return
+            self._update_state(self._klyqa_api.devices[self.u_id].status)
+            if self._added_klyqa:
+                self.schedule_update_ha_state()  # force_refresh=True)
+            # self.async_schedule_update_ha_state(force_refresh=True)
+            # except:  # noqa: E722 pylint: disable=bare-except
+            #     LOGGER.error(traceback.format_exc())
+            # finally:
+            #     send_event_cb.set()
 
         parser = api.get_description_parser()
         args.extend(["--local", "--device_unitids", f"{self.u_id}"])
@@ -704,14 +705,14 @@ class KlyqaLight(LightEntity):
             )
         )
         # LOGGER.info("Send started!")
-        await send_event_cb.wait()
+        # await send_event_cb.wait()
 
-        # LOGGER.info("Send started wait ended!")
-        try:
-            await asyncio.wait([new_task], timeout=0.001)
-        except asyncio.TimeoutError:
-            LOGGER.error("Timeout send")
-        pass
+        # # LOGGER.info("Send started wait ended!")
+        # try:
+        #     await asyncio.wait([new_task], timeout=0.001)
+        # except asyncio.TimeoutError:
+        #     LOGGER.error("Timeout send")
+        # pass
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""

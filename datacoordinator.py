@@ -38,7 +38,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         password: str = "",
         hass: HomeAssistant | None = None,
         polling: bool = True,
-    ):
+    ) -> None:
         """HAKlyqaAccount."""
         super().__init__(data_communicator, username, password)
         self.hass = hass
@@ -46,7 +46,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
 
     async def login(self, print_onboarded_devices=False) -> bool:
         """Login."""
-        ret = await super().login(print_onboarded_devices=False)
+        ret: bool = await super().login(print_onboarded_devices=False)
         if ret:
             await api.async_json_cache(
                 {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
@@ -117,6 +117,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                         ):
                             self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
 
+        klyqa_new_light_registered: list[str]
         if device_type == "light":
             klyqa_new_light_registered = [
                 key

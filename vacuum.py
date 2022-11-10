@@ -20,7 +20,7 @@ from homeassistant.components.vacuum import (
 
 from typing import Any
 
-from homeassistant.core import HomeAssistant, Event
+from homeassistant.core import HomeAssistant, Event, CALLBACK_TYPE
 
 from homeassistant.const import Platform
 
@@ -42,7 +42,8 @@ from homeassistant.config_entries import ConfigEntry
 
 
 from klyqa_ctl import klyqa_ctl as api
-from .datacoordinator import HAKlyqaAccount
+
+from . import HAKlyqaAccount
 
 from .const import (
     DOMAIN,
@@ -54,9 +55,9 @@ from datetime import timedelta
 
 TIMEOUT_SEND = 11
 # PARALLEL_UPDATES = 0
-SCAN_INTERVAL = timedelta(seconds=105)
+SCAN_INTERVAL: timedelta = timedelta(seconds=105)
 
-SUPPORT_KLYQA = (
+SUPPORT_KLYQA: int = (
     VacuumEntityFeature.BATTERY
     | VacuumEntityFeature.FAN_SPEED
     | VacuumEntityFeature.PAUSE
@@ -68,7 +69,7 @@ SUPPORT_KLYQA = (
     | VacuumEntityFeature.LOCATE
     | VacuumEntityFeature.TURN_ON
     | VacuumEntityFeature.TURN_OFF
-    # | VacuumEntityFeature.SEND_COMMAND
+    # | VacuumEntityFeature.SEND_COMMAND # later support direction commands, moving
     # | VacuumEntityFeature.CLEAN_SPOT
     # | VacuumEntityFeature.MAP # actually we support Map retrieve from vc via get --cleaningrec, reply need to sorted out though
     #     The cleaning records format is as follows:
@@ -114,12 +115,14 @@ async def async_setup_klyqa(
         await klyqa.search_and_send_loop_task_stop()
         await hass.async_add_executor_job(klyqa.shutdown)
 
-    listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
+    listener: CALLBACK_TYPE = hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_STOP, on_hass_stop
+    )
 
     if entry:
         entry.async_on_unload(listener)
 
-    entity_registry = er.async_get(hass)
+    entity_registry: EntityRegistry = er.async_get(hass)
 
     async def add_new_entity(event: Event) -> None:
 
@@ -129,7 +132,7 @@ async def async_setup_klyqa(
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        device_state: api.KlyqaDevice | KlyqaVC = (
+        device_state: api.KlyqaVC = (
             klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaVC()
         )
 
@@ -147,7 +150,7 @@ async def async_setup_klyqa(
         )
 
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
-        new_entity = KlyqaVC(
+        new_entity: KlyqaVC = KlyqaVC(
             device_settings,
             device_state,
             klyqa,
@@ -184,6 +187,7 @@ class KlyqaVC(StateVacuumEntity):
     u_id: str
     send_event_cb: asyncio.Event | None = None
     hass: HomeAssistant
+    _state: str | None = None
 
     def __init__(
         self,
@@ -229,7 +233,7 @@ class KlyqaVC(StateVacuumEntity):
 
     async def async_stop(self, **kwargs: Any) -> None:
         """Stop the vacuum cleaner, do not return to base."""
-        args = ["set", "--cleaning", "off"]
+        args: list[str] = ["set", "--cleaning", "off"]
 
         await self.send_to_devices(args)
 
@@ -238,7 +242,7 @@ class KlyqaVC(StateVacuumEntity):
 
         This method must be run in the event loop.
         """
-        args = ["set", "--cleaning", "on"]
+        args: list[str] = ["set", "--cleaning", "on"]
 
         await self.send_to_devices(args)
 
@@ -252,9 +256,9 @@ class KlyqaVC(StateVacuumEntity):
 
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
-        devices_settings = self._klyqa_api.acc_settings["devices"]
+        devices_settings: list[Any] = self._klyqa_api.acc_settings["devices"]
 
-        device_result = [
+        device_result: list[Any] = [
             x
             for x in devices_settings
             if api.format_uid(str(x["localDeviceId"])) == self.u_id
@@ -284,7 +288,7 @@ class KlyqaVC(StateVacuumEntity):
                 self.device_config["productId"]
             ]
 
-        entity_registry = er.async_get(self.hass)
+        entity_registry: EntityRegistry = er.async_get(self.hass)
         entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, str(self.unique_id)
         )
@@ -292,7 +296,7 @@ class KlyqaVC(StateVacuumEntity):
         if entity_id:
             entity_registry_entry = entity_registry.async_get(str(entity_id))
 
-        device_registry = dr.async_get(self.hass)
+        device_registry: dr.DeviceRegistry = dr.async_get(self.hass)
 
         device = device_registry.async_get_device(
             identifiers={(DOMAIN, self._attr_unique_id)}
@@ -315,25 +319,17 @@ class KlyqaVC(StateVacuumEntity):
         """Return if the entity should be enabled when first added to the entity registry."""
         return True
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the vacuum on and start cleaning."""
-        args = ["--power", "on"]
+        args: list[str] = ["--power", "on"]
 
         await self.send_to_devices(args)
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the vacuum off stopping the cleaning and returning home."""
 
-        args = ["set", "--workingmode", "CHARGE_GO"]
+        args: list[str] = ["set", "--workingmode", "CHARGE_GO"]
 
-        if self._attr_transition_time:
-            args.extend(["--transitionTime", str(self._attr_transition_time)])
-
-        LOGGER.info(
-            f"Send to device {self.entity_id}%s: %s",
-            f" ({self.name})" if self.name else "",
-            " ".join(args),
-        )
         await self.send_to_devices(args)
 
     async def async_update_klyqa(self) -> None:
@@ -347,7 +343,7 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update(self) -> None:
         """Fetch new state data for this device. Called by HA."""
 
-        name = f" ({self.name})" if self.name else ""
+        name: str = f" ({self.name})" if self.name else ""
         LOGGER.info("Update device %s%s", self.entity_id, name)
 
         try:
@@ -363,12 +359,16 @@ class KlyqaVC(StateVacuumEntity):
 
         self._update_state(self._klyqa_api.devices[self.u_id].status)
 
+    # TBC: We can only read workingstatus for cleaning spot, but not setting workingmode
+    # to cleaning spot
     # async def async_clean_spot(self, **kwargs: Any) -> None:
     #     """Perform a spot clean-up.
 
     #     This method must be run in the event loop.
     #     """
-    #     await self.send_to_devices(["get", "--workstatus", "CLEANING_SPOT"])
+    #     await self.send_to_devices(["get", "--workingstatus", "CLEANING_SPOT"])
+
+    #     self._update_state(self._klyqa_api.devices[self.u_id].status)
 
     async def async_locate(self, **kwargs: Any) -> None:
         """Locate the vacuum cleaner."""
@@ -402,33 +402,33 @@ class KlyqaVC(StateVacuumEntity):
 
     async def send_to_devices(
         self,
-        args: list[Any],
+        args: list[str],
         callback: Callable[[Any, str], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         """Send_to_devices."""
 
-        send_event_cb: asyncio.Event = asyncio.Event()
+        # send_event_cb: asyncio.Event = asyncio.Event()
 
         async def send_answer_cb(msg: api.Message, uid: str) -> None:
-            nonlocal callback, send_event_cb
+            nonlocal callback  # , send_event_cb
             if callback is not None:
                 await callback(msg, uid)
-            try:
-                LOGGER.debug("Send_answer_cb %s", str(uid))
-                # ttl ended
-                if uid != self.u_id:
-                    return
-                self._update_state(self._klyqa_api.devices[self.u_id].status)
-                if self._added_klyqa:
-                    self.schedule_update_ha_state()  # force_refresh=True
-            except:  # noqa: E722 pylint: disable=bare-except
-                LOGGER.error(traceback.format_exc())
-            finally:
-                send_event_cb.set()
+            # try:
+            LOGGER.debug("Send_answer_cb %s", str(uid))
+            # ttl ended
+            if uid != self.u_id:
+                return
+            self._update_state(self._klyqa_api.devices[self.u_id].status)
+            if self._added_klyqa:
+                self.schedule_update_ha_state()  # force_refresh=True
+            # except:  # noqa: E722 pylint: disable=bare-except
+            #     LOGGER.error(traceback.format_exc())
+            # finally:
+            # send_event_cb.set()
 
-        parser = api.get_description_parser()
+        parser: argparse.ArgumentParser = api.get_description_parser()
         # args.extend(["--local", "--device_unitids", f"{self.u_id}"])
-        args: list[str] = ["--local", "--device_unitids", f"{self.u_id}"] + args
+        args = ["--local", "--device_unitids", f"{self.u_id}"] + args
 
         api.add_config_args(parser=parser)
         api.add_command_args(parser=parser)
@@ -444,15 +444,15 @@ class KlyqaVC(StateVacuumEntity):
                 timeout_ms=TIMEOUT_SEND * 1000,
             )
         )
-        LOGGER.info("Send started!")
-        await send_event_cb.wait()
+        # LOGGER.info("Send started!")
+        # await send_event_cb.wait()
 
-        LOGGER.info("Send started wait ended!")
-        try:
-            await asyncio.wait([new_task], timeout=0.001)
-        except asyncio.TimeoutError:
-            LOGGER.error("Timeout send")
-        pass
+        # LOGGER.info("Send started wait ended!")
+        # try:
+        #     await asyncio.wait([new_task], timeout=0.001)
+        # except asyncio.TimeoutError:
+        #     LOGGER.error("Timeout send")
+        # pass
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""
@@ -512,16 +512,17 @@ class KlyqaVC(StateVacuumEntity):
         ]
         self._state = (
             status[state_complete.workingstatus - 1]
-            if state_complete.workingstatus in status
+            if state_complete.workingstatus > 0
+            and state_complete.workingstatus < len(status)
             else None
         )
         # retranslate our suction ids to HA
-        sp = self._attr_fan_speed_list.index(
+        speed: int = self._attr_fan_speed_list.index(
             list(api.VC_SUCTION_STRENGTHS)[state_complete.suction - 1].name
         )
-        self._attr_fan_speed = sp
+        self._attr_fan_speed = speed
 
-        self._attr_is_on = state_complete.power == "on"
+        self._attr_is_on: bool = state_complete.power == "on"
 
         self._attr_assumed_state = False
         self.state_complete = state_complete
