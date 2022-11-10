@@ -517,7 +517,7 @@ class KlyqaVC(StateVacuumEntity):
         )
         # retranslate our suction ids to HA
         sp = self._attr_fan_speed_list.index(
-            list(api.VC_SUCTION_STRENGTHS)[state_complete.suction].name
+            list(api.VC_SUCTION_STRENGTHS)[state_complete.suction - 1].name
         )
         self._attr_fan_speed = sp
 
