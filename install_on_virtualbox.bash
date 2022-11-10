@@ -33,12 +33,13 @@ sudo mount ${dev}p8 $tmp
 
 error=false
 
-(cd $tmp/supervisor/homeassistant; mkdir -p custom_components/ && cd custom_components
+(cd $tmp/supervisor/homeassistant && mkdir -p custom_components
     rm -rf klyqa
     printf "Do you want to install Klyqa Home Assistant Integration directly or managed via Home Assistant Community Store"
     printf " (HACS, you get update hints on new releases on the Klyqa Integration from the Github repository with HACS) [k/H] ? "
     read x
     if [ "$x" = "k"]; then
+        cd custom_components
         git clone https://github.com/klyqa/home-assistant-integration klyqa
         echo
         echo "Installation of Klyqa integration finished."
