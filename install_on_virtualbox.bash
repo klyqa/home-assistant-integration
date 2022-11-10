@@ -34,7 +34,7 @@ sudo mount ${dev}p8 $tmp
 error=false
 
 (cd $tmp/supervisor/homeassistant && mkdir -p custom_components
-    rm -rf klyqa
+    rm -rf custom_components/klyqa
     printf "Do you want to install Klyqa Home Assistant Integration directly or managed via Home Assistant Community Store"
     printf " (HACS, you get update hints on new releases on the Klyqa Integration from the Github repository with HACS) [k/H] ? "
     read x
