@@ -112,15 +112,15 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 platform: str = ""
                 entity_id: str = ""
                 event: str = ""
-                if device_type == "light" and device["productId"].startswith(
-                    "@klyqa.lighting"
-                ):
+                if device_type == "light" and device["productId"].find(
+                    ".lighting"
+                ) > -1:
                     platform = Platform.LIGHT
                     entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_LIGHT
-                elif device_type == "vacuum" and device["productId"].startswith(
-                    "@klyqa.cleaning"
-                ):
+                elif device_type == "vacuum" and device["productId"].find(
+                    ".cleaning"
+                ) > -1:
                     platform = Platform.VACUUM
                     entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_VC
