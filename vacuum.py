@@ -55,7 +55,7 @@ from datetime import timedelta
 
 TIMEOUT_SEND = 11
 # PARALLEL_UPDATES = 0
-SCAN_INTERVAL: timedelta = timedelta(seconds=105)
+SCAN_INTERVAL: timedelta = timedelta(seconds=10005)
 
 SUPPORT_KLYQA: int = (
     VacuumEntityFeature.BATTERY
@@ -69,9 +69,9 @@ SUPPORT_KLYQA: int = (
     | VacuumEntityFeature.LOCATE
     | VacuumEntityFeature.TURN_ON
     | VacuumEntityFeature.TURN_OFF
-    # | VacuumEntityFeature.SEND_COMMAND # later support direction commands, moving
-    # | VacuumEntityFeature.CLEAN_SPOT
-    # | VacuumEntityFeature.MAP # actually we support Map retrieve from vc via get --cleaningrec, reply need to sorted out though
+    | VacuumEntityFeature.SEND_COMMAND  # later support direction commands, moving
+    | VacuumEntityFeature.CLEAN_SPOT
+    | VacuumEntityFeature.MAP  # actually we support Map retrieve from vc via get --cleaningrec, reply need to sorted out though
     #     The cleaning records format is as follows:
     # Date of cleaning as YYYYMMDDTTRR
     # Cleaning time as xxx
@@ -453,6 +453,11 @@ class KlyqaVC(StateVacuumEntity):
         # except asyncio.TimeoutError:
         #     LOGGER.error("Timeout send")
         # pass
+        try:
+            await asyncio.wait([new_task], timeout=0.001)
+        except asyncio.TimeoutError:
+            # LOGGER.error("Timeout send")
+            pass
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""
