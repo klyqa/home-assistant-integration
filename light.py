@@ -57,7 +57,8 @@ from homeassistant.config_entries import ConfigEntry
 
 from klyqa_ctl import klyqa_ctl as api
 from . import datacoordinator as KlyqaData
-from .datacoordinator import HAKlyqaAccount
+
+from . import HAKlyqaAccount
 
 from .const import (
     DOMAIN,
@@ -79,7 +80,7 @@ import homeassistant.helpers.area_registry as area_registry
 
 TIMEOUT_SEND = 11
 # PARALLEL_UPDATES = 0
-SCAN_INTERVAL = timedelta(seconds=105)
+SCAN_INTERVAL = timedelta(seconds=10005)
 
 SUPPORT_KLYQA = LightEntityFeature.TRANSITION
 
@@ -282,7 +283,7 @@ class KlyqaLight(LightEntity):
     _attr_supported_features = SUPPORT_KLYQA
     _attr_transition_time = 500
 
-    _klyqa_api: HAKlyqaAccount
+    _klyqa_account: HAKlyqaAccount
     _klyqa_device: api.KlyqaBulb
     settings: dict[Any, Any] = {}
     config_entry: ConfigEntry | None = None
@@ -295,18 +296,18 @@ class KlyqaLight(LightEntity):
 
     def __init__(
         self,
-        settings: Any,
+        settings: dict[str, Any],
         device: api.KlyqaBulb,
-        klyqa_api: Any,
-        entity_id: Any,
+        klyqa_account: HAKlyqaAccount,
+        entity_id: str,
         hass: HomeAssistant,
-        should_poll: Any = True,
-        config_entry: Any = None,
+        should_poll: bool = True,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize a Klyqa Light Bulb."""
         self.hass = hass
 
-        self._klyqa_api = klyqa_api
+        self._klyqa_account = klyqa_account
         self.u_id = api.format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = api.format_uid(self.u_id)
         self._klyqa_device = device
@@ -334,7 +335,7 @@ class KlyqaLight(LightEntity):
             try:
                 response_object = await self.hass.async_add_executor_job(
                     partial(
-                        self._klyqa_api.request,
+                        self._klyqa_account.request,
                         "/config/product/" + self.settings["productId"],
                         timeout=30,
                     )
@@ -367,7 +368,7 @@ class KlyqaLight(LightEntity):
 
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
-        devices_settings = self._klyqa_api.acc_settings["devices"]
+        devices_settings = self._klyqa_account.acc_settings["devices"]
 
         device_result = [
             x
@@ -427,7 +428,7 @@ class KlyqaLight(LightEntity):
             self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
 
         self.rooms = []
-        for room in self._klyqa_api.acc_settings["rooms"]:
+        for room in self._klyqa_account.acc_settings["rooms"]:
             for device in room["devices"]:
                 if device and api.format_uid(device["localDeviceId"]) == self.u_id:  # type: ignore[index]
                     self.rooms.append(room)
@@ -483,6 +484,8 @@ class KlyqaLight(LightEntity):
 
     async def async_turn_on(self, **kwargs):
         """Instruct the light to turn off."""
+        await self.hass.async_create_task(self._klyqa_account.update_account("light"))
+
         args = []
 
         if ATTR_HS_COLOR in kwargs:
@@ -635,9 +638,9 @@ class KlyqaLight(LightEntity):
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_api.request_account_settings()
+        await self._klyqa_account.request_account_settings()
         if self._added_klyqa:
-            await self._klyqa_api.process_account_settings(device_type="light")
+            await self._klyqa_account.process_account_settings(device_type="light")
         await self.async_update_settings()
 
     async def async_update(self) -> None:
@@ -657,7 +660,7 @@ class KlyqaLight(LightEntity):
         # if self._added_klyqa:
         await self.send_to_bulbs(["--request"])
 
-        self._update_state(self._klyqa_api.devices[self.u_id].status)
+        self._update_state(self._klyqa_account.devices[self.u_id].status)
 
     async def send_to_bulbs(
         self,
@@ -666,25 +669,18 @@ class KlyqaLight(LightEntity):
     ) -> None:
         """Send_to_bulbs."""
 
-        send_event_cb: asyncio.Event = asyncio.Event()
-
         async def send_answer_cb(msg: api.Message, uid: str) -> None:
-            nonlocal callback, send_event_cb
+            nonlocal callback  # , send_event_cb
             if callback is not None:
                 await callback(msg, uid)
-            try:
-                LOGGER.debug("Send_answer_cb %s", str(uid))
-                # ttl ended
-                if uid != self.u_id:
-                    return
-                self._update_state(self._klyqa_api.devices[self.u_id].status)
-                if self._added_klyqa:
-                    self.schedule_update_ha_state()  # force_refresh=True)
-                # self.async_schedule_update_ha_state(force_refresh=True)
-            except:  # noqa: E722 pylint: disable=bare-except
-                LOGGER.error(traceback.format_exc())
-            finally:
-                send_event_cb.set()
+
+            LOGGER.debug("Send_answer_cb %s", str(uid))
+
+            if uid != self.u_id:
+                return
+            self._update_state(self._klyqa_account.devices[self.u_id].status)
+            if self._added_klyqa:
+                self.schedule_update_ha_state()
 
         parser = api.get_description_parser()
         args.extend(["--local", "--device_unitids", f"{self.u_id}"])
@@ -694,9 +690,8 @@ class KlyqaLight(LightEntity):
 
         args_parsed = parser.parse_args(args=args)
 
-        # LOGGER.info("Send start!")
         new_task = asyncio.create_task(
-            self._klyqa_api._send_to_devices(
+            self._klyqa_account._send_to_devices(
                 args_parsed,
                 args,
                 async_answer_callback=send_answer_cb,
@@ -704,14 +699,14 @@ class KlyqaLight(LightEntity):
             )
         )
         # LOGGER.info("Send started!")
-        await send_event_cb.wait()
+        # await send_event_cb.wait()
 
         # LOGGER.info("Send started wait ended!")
         try:
             await asyncio.wait([new_task], timeout=0.001)
         except asyncio.TimeoutError:
-            LOGGER.error("Timeout send")
-        pass
+            # LOGGER.error("Timeout send")
+            pass
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""
