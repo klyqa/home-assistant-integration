@@ -49,7 +49,7 @@ Put the integration folder into your home assistant config custom_components fol
 <br />
 E. g. config/custom_components/klyqa<br />
 ```
-cd config/custom_components && git clone https://github.com/fsqcx/klyqa_ha_custom_component klyqa
+cd config/custom_components && git clone https://github.com/klyqa/home-assistant-integration klyqa
 ```
 
 You can control the logger in the configuration.yaml in your config folder. For example set info level for home assistant and debug level for the klyqa integration:<br />
@@ -69,23 +69,6 @@ logger:
 Locally you found Home Assistant normally under 127.0.0.1:8123 in you browser.<br />
 Set up home assistant account and configuration.<br />
 Then you can set up Klyqa Integration either via config flow in the webinterface: Configuration > Devices & Services > + Add Integration > Klyqa<br /><br />
-or<br /><br />
-in the config/configuration.yaml:<br />
-```
-light:
-  - platform: klyqa
-    username: your-email@domain.com
-    password: your_password
-    polling: True
-    scan_interval: 30
-    sync_rooms: True
-    host: http://localhost:3000 # when working with devstack, current option, reaching app-api
-```
-You can store your password into your config/secrets.yaml and put for example in the password value "!secret klyqa_password_identifier"<br />
-using config/secrets.yaml:
-```
-klyqa_password_identifier: your_password
-```
 <br />
 <br />
 
