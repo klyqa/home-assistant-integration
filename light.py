@@ -56,7 +56,7 @@ from homeassistant.config_entries import ConfigEntry
 
 
 from klyqa_ctl import klyqa_ctl as api
-from . import datacoordinator as KlyqaData
+from . import KlyqaData
 
 from . import HAKlyqaAccount
 
