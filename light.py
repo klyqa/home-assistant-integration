@@ -169,13 +169,15 @@ async def async_setup_klyqa(
 
     async def add_new_entity(event: Event) -> None:
 
-        device_settings = event.data
+        device_settings: dict[str, Any] = event.data
 
-        u_id = api.format_uid(device_settings["localDeviceId"])
+        u_id: str = api.format_uid(device_settings["localDeviceId"])
 
-        entity_id = ENTITY_ID_FORMAT.format(u_id)
+        entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        light_state = klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaBulb()
+        light_state: KlyqaDevice | KlyqaBulb = (
+            klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaBulb()
+        )
 
         # Clear status added from cloud when the bulb is not connected to the cloud so offline
         if not light_state.cloud.connected:
@@ -183,7 +185,7 @@ async def async_setup_klyqa(
 
         entity = entity_registry.async_get(entity_id)
 
-        registered_entity_id = entity_registry.async_get_entity_id(
+        registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.LIGHT, DOMAIN, u_id
         )
 
@@ -195,7 +197,7 @@ async def async_setup_klyqa(
         )
 
         LOGGER.info(f"Add entity {entity_id} ({device_settings.get('name')}).")
-        new_entity = KlyqaLight(
+        new_entity: KlyqaLight = KlyqaLight(
             device_settings,
             light_state,
             klyqa,
@@ -224,16 +226,16 @@ async def async_setup_klyqa(
         if not "area_id" in event.data:
             return
 
-        area_reg = area_registry.async_get(hass)
+        area_reg: AreaRegistry = area_registry.async_get(hass)
         tries = 0
         while tries < 2:
-            tries = tries + 1
+            tries: int = tries + 1
             area: AreaEntry | None = area_reg.async_get_area(event.data["area_id"])
             if not area and tries <= 1:
                 await asyncio.sleep(SAVE_DELAY)
             elif area and area.name in klyqa_data.entities_area_update:
 
-                entity_registry = er.async_get(hass)
+                entity_registry: EntityRegistry = er.async_get(hass)
                 for entity_id in klyqa_data.entities_area_update[area.name].copy():
 
                     # platform: EntityPlatform = async_get_current_platform()
@@ -482,14 +484,16 @@ class KlyqaLight(LightEntity):
         """Return if the entity should be enabled when first added to the entity registry."""
         return True
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Instruct the light to turn off."""
         await self.hass.async_create_task(self._klyqa_account.update_account("light"))
 
-        args = []
+        args: list[str] = []
 
         if ATTR_HS_COLOR in kwargs:
-            rgb = color_util.color_hs_to_RGB(*kwargs[ATTR_HS_COLOR])
+            rgb: tuple[int, int, int] = color_util.color_hs_to_RGB(
+                *kwargs[ATTR_HS_COLOR]
+            )
             self._attr_rgb_color = (rgb[0], rgb[1], rgb[2])
             self._attr_hs_color = kwargs[ATTR_HS_COLOR]
 
@@ -620,10 +624,10 @@ class KlyqaLight(LightEntity):
 
         await self.send_to_bulbs(args)
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Instruct the light to turn off."""
 
-        args = ["--power", "off"]
+        args: list[str] = ["--power", "off"]
 
         if self._attr_transition_time:
             args.extend(["--transitionTime", str(self._attr_transition_time)])
