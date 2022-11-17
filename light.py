@@ -54,8 +54,9 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.util.color as color_util
 from homeassistant.config_entries import ConfigEntry
 
+import klyqa_ctl as api
 
-from klyqa_ctl import klyqa_ctl as api
+# from klyqa_ctl.general.general import DeviceType
 from . import KlyqaData
 
 from . import HAKlyqaAccount
@@ -687,10 +688,11 @@ class KlyqaLight(LightEntity):
                 self.schedule_update_ha_state()
 
         parser = api.get_description_parser()
-        args.extend(["--local", "--device_unitids", f"{self.u_id}"])
+        args.extend(["--debug", "--local", "--device_unitids", f"{self.u_id}"])
         # , "--debug"
+        args.insert(0, api.DeviceType.lighting.name)
         api.add_config_args(parser=parser)
-        api.add_command_args(parser=parser)
+        api.add_command_args_bulb(parser=parser)
 
         args_parsed = parser.parse_args(args=args)
 
@@ -757,7 +759,9 @@ class KlyqaLight(LightEntity):
             self._attr_hs_color = color_util.color_RGB_to_hs(*self._attr_rgb_color)
 
         self._attr_brightness = int((float(state_complete.brightness) / 100) * 255)
-        self._attr_is_on = state_complete.status == "on"
+        self._attr_is_on = (
+            state_complete.status[0] == "on" if state_complete.status else False
+        )
 
         self._attr_color_mode = (
             ColorMode.COLOR_TEMP
