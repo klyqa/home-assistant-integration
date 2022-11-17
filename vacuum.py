@@ -429,9 +429,9 @@ class KlyqaVC(StateVacuumEntity):
         parser: argparse.ArgumentParser = api.get_description_parser()
         # args.extend(["--local", "--device_unitids", f"{self.u_id}"])
         args = ["--local", "--device_unitids", f"{self.u_id}"] + args
-
+        args.insert(0, api.DeviceType.cleaner.name)
         api.add_config_args(parser=parser)
-        api.add_command_args(parser=parser)
+        api.add_command_args_cleaner(parser=parser)
 
         args_parsed = parser.parse_args(args=args)
 
