@@ -759,9 +759,10 @@ class KlyqaLight(LightEntity):
             self._attr_hs_color = color_util.color_RGB_to_hs(*self._attr_rgb_color)
 
         self._attr_brightness = int((float(state_complete.brightness) / 100) * 255)
+
         self._attr_is_on = (
-            state_complete.status[0] == "on" if state_complete.status else False
-        )
+            isinstance(state_complete.status, list) and state_complete.status[0] == "on"
+        ) or (isinstance(state_complete.status, str) and state_complete.status == "on")
 
         self._attr_color_mode = (
             ColorMode.COLOR_TEMP
