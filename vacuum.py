@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
+
+from klyqa_ctl.devices.vacuum import KlyqaVCResponseStatus
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
@@ -54,8 +56,7 @@ from .const import (
 from datetime import timedelta
 
 TIMEOUT_SEND = 11
-# PARALLEL_UPDATES = 0
-SCAN_INTERVAL: timedelta = timedelta(seconds=10005)
+SCAN_INTERVAL: timedelta = timedelta(seconds=60)
 
 SUPPORT_KLYQA: int = (
     VacuumEntityFeature.BATTERY
@@ -82,9 +83,9 @@ SUPPORT_KLYQA: int = (
 )
 
 
-async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
-    """Expose vacuum control via state machine and services."""
-    return True
+# async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
+#     """Expose vacuum control via state machine and services."""
+#     return True
 
 
 async def async_setup_entry(
@@ -168,7 +169,7 @@ async def async_setup_klyqa(
         hass.bus.async_listen(EVENT_KLYQA_NEW_VC, add_new_entity)
     )
 
-    await klyqa.update_account(device_type="vacuum")
+    await klyqa.update_account(device_type=api.DeviceType.cleaner.name)
     return
 
 
@@ -185,7 +186,7 @@ class KlyqaVC(StateVacuumEntity):
     """entity added finished"""
     _added_klyqa: bool = False
     u_id: str
-    send_event_cb: asyncio.Event | None = None
+    send_event_cb: asyncio.Event
     hass: HomeAssistant
     _state: str | None = None
 
@@ -205,7 +206,7 @@ class KlyqaVC(StateVacuumEntity):
 
         self._attr_supported_features = SUPPORT_KLYQA
 
-        self._klyqa_api = klyqa_api
+        self._klyqa_account = klyqa_api
 
         self.u_id = api.format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = api.format_uid(self.u_id)
@@ -215,7 +216,7 @@ class KlyqaVC(StateVacuumEntity):
         self._attr_should_poll = should_poll
 
         self.config_entry = config_entry
-        self.send_event_cb: asyncio.Event = asyncio.Event()
+        self.send_event_cb = asyncio.Event()
 
         self.device_config: api.Device_config = {}
         self.settings = {}
@@ -229,7 +230,7 @@ class KlyqaVC(StateVacuumEntity):
         ]
         self._state = None
         self._attr_battery_level = 0
-        self.state_complete: KlyqaVCResponseStatus = None
+        self.state_complete: KlyqaVCResponseStatus | None = None
 
     async def async_stop(self, **kwargs: Any) -> None:
         """Stop the vacuum cleaner, do not return to base."""
@@ -256,8 +257,18 @@ class KlyqaVC(StateVacuumEntity):
 
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
-        devices_settings: list[Any] = self._klyqa_api.acc_settings["devices"]
 
+        if self._klyqa_account.acc_settings is None:
+            return
+
+        devices_settings: Any | None = (
+            self._klyqa_account.acc_settings["devices"]
+            if "devices" in self._klyqa_account.acc_settings
+            else None
+        )
+
+        if devices_settings is None:
+            return
         device_result: list[Any] = [
             x
             for x in devices_settings
@@ -335,9 +346,9 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_api.request_account_settings()  # _settings_eco()
+        await self._klyqa_account.request_account_settings()  # _settings_eco()
         if self._added_klyqa:
-            await self._klyqa_api.process_account_settings(device_type="vacuum")
+            await self._klyqa_account.process_account_settings(device_type="vacuum")
         await self.async_update_settings()
 
     async def async_update(self) -> None:
@@ -357,7 +368,7 @@ class KlyqaVC(StateVacuumEntity):
         # if self._added_klyqa:
         await self.send_to_devices(["get", "--all"])
 
-        self._update_state(self._klyqa_api.devices[self.u_id].status)
+        self._update_state(self._klyqa_account.devices[self.u_id].status)
 
     # TBC: We can only read workingstatus for cleaning spot, but not setting workingmode
     # to cleaning spot
@@ -368,12 +379,12 @@ class KlyqaVC(StateVacuumEntity):
     #     """
     #     await self.send_to_devices(["get", "--workingstatus", "CLEANING_SPOT"])
 
-    #     self._update_state(self._klyqa_api.devices[self.u_id].status)
+    #     self._update_state(self._klyqa_account.devices[self.u_id].status)
 
     async def async_locate(self, **kwargs: Any) -> None:
         """Locate the vacuum cleaner."""
         set: str = "on"
-        if self._klyqa_api.devices[self.u_id].status.beeping == "on":
+        if self._klyqa_account.devices[self.u_id].status.beeping == "on":
             # if self.state_complete and self.state_complete["beeping"] == "on":
             set = "off"
         await self.send_to_devices(["set", "--beeping", set])
@@ -418,7 +429,7 @@ class KlyqaVC(StateVacuumEntity):
             # ttl ended
             if uid != self.u_id:
                 return
-            self._update_state(self._klyqa_api.devices[self.u_id].status)
+            self._update_state(self._klyqa_account.devices[self.u_id].status)
             if self._added_klyqa:
                 self.schedule_update_ha_state()  # force_refresh=True
             # except:  # noqa: E722 pylint: disable=bare-except
@@ -437,7 +448,7 @@ class KlyqaVC(StateVacuumEntity):
 
         LOGGER.info("Send start!")
         new_task = asyncio.create_task(
-            self._klyqa_api._send_to_devices(
+            self._klyqa_account._send_to_devices(
                 args_parsed,
                 args,
                 async_answer_callback=send_answer_cb,
