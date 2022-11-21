@@ -4,6 +4,10 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 from functools import partial
 import json
+from klyqa_ctl.devices.device import KlyqaDevice
+from klyqa_ctl.devices.light import KlyqaBulb
+
+from klyqa_ctl.general.general import TypeJSON
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import area_registry as ar
@@ -80,8 +84,7 @@ from homeassistant.helpers.area_registry import (
 import homeassistant.helpers.area_registry as area_registry
 
 TIMEOUT_SEND = 11
-# PARALLEL_UPDATES = 0
-SCAN_INTERVAL = timedelta(seconds=10005)
+SCAN_INTERVAL = timedelta(seconds=60)
 
 SUPPORT_KLYQA = LightEntityFeature.TRANSITION
 
@@ -96,16 +99,6 @@ async def async_setup_entry(
         await async_setup_klyqa(
             hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
         )
-
-
-async def async_setup_platform(
-    hass: HomeAssistant,
-    config: ConfigType,
-    add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
-) -> None:
-    """Async_setup_platform."""
-    klyqa = None
 
 
 class KlyqaLightGroup(LightGroup):
@@ -149,9 +142,8 @@ async def async_setup_klyqa(
         # await klyqa.search_and_send_loop_task_stop()
         await hass.async_add_executor_job(klyqa.shutdown)
 
-    listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
-
     if entry:
+        listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
         entry.async_on_unload(listener)
 
     entity_registry = er.async_get(hass)
@@ -276,7 +268,7 @@ async def async_setup_klyqa(
         hass.bus.async_listen(EVENT_AREA_REGISTRY_UPDATED, add_entity_to_area)
     )
 
-    await klyqa.update_account(device_type="light")
+    await klyqa.update_account(device_type=api.DeviceType.lighting.name)
     return
 
 
@@ -294,7 +286,7 @@ class KlyqaLight(LightEntity):
     """entity added finished"""
     _added_klyqa: bool = False
     u_id: str
-    send_event_cb: asyncio.Event | None = None
+    send_event_cb: asyncio.Event
     hass: HomeAssistant
 
     def __init__(
@@ -323,7 +315,7 @@ class KlyqaLight(LightEntity):
         self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
         self._attr_effect_list = []
         self.config_entry = config_entry
-        self.send_event_cb: asyncio.Event = asyncio.Event()
+        self.send_event_cb = asyncio.Event()
 
         self.device_config: api.Device_config = {}
         self.settings = {}
@@ -336,14 +328,18 @@ class KlyqaLight(LightEntity):
             self.device_config = api.device_configs[self.settings["productId"]]
         else:
             try:
-                response_object = await self.hass.async_add_executor_job(
-                    partial(
-                        self._klyqa_account.request,
-                        "/config/product/" + self.settings["productId"],
-                        timeout=30,
+                acc: HAKlyqaAccount = self._klyqa_account
+                response_object: TypeJSON | None = (
+                    await self.hass.async_add_executor_job(
+                        partial(
+                            acc.request,
+                            "/config/product/" + self.settings["productId"],
+                            timeout=30,
+                        )
                     )
                 )
-                self.device_config = json.loads(response_object.text)
+                if not response_object is None:
+                    self.device_config = response_object
             except:  # noqa: E722 pylint: disable=bare-except
                 LOGGER.error("Could not load device configuration profile")
                 return
@@ -371,7 +367,18 @@ class KlyqaLight(LightEntity):
 
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
-        devices_settings = self._klyqa_account.acc_settings["devices"]
+
+        if self._klyqa_account.acc_settings is None:
+            return
+
+        devices_settings: Any | None = (
+            self._klyqa_account.acc_settings["devices"]
+            if "devices" in self._klyqa_account.acc_settings
+            else None
+        )
+
+        if devices_settings is None:
+            return
 
         device_result = [
             x
@@ -452,7 +459,7 @@ class KlyqaLight(LightEntity):
             area: AreaEntry | None = area_reg.async_get_area_by_name(room)
             if not area:
                 # new area first add
-                LOGGER.info("Create new room %s", area.name)
+                LOGGER.info("Create new room %s", room)
                 area = area_reg.async_get_or_create(room)
                 LOGGER.info("Add bulb %s to new room %s", self.name, area.name)
                 self.hass.data[DOMAIN].entities_area_update.setdefault(room, set()).add(
@@ -645,7 +652,9 @@ class KlyqaLight(LightEntity):
 
         await self._klyqa_account.request_account_settings()
         if self._added_klyqa:
-            await self._klyqa_account.process_account_settings(device_type="light")
+            await self._klyqa_account.process_account_settings(
+                device_type=api.DeviceType.lighting.name
+            )
         await self.async_update_settings()
 
     async def async_update(self) -> None:
@@ -724,7 +733,7 @@ class KlyqaLight(LightEntity):
         except Exception:  # pylint: disable=bare-except,broad-except
             LOGGER.error(traceback.format_exc())
 
-    def _update_state(self, state_complete: api.KlyqaBulbResponseStatus) -> None:
+    def _update_state(self, state_complete: api.KlyqaBulbResponseStatus | None) -> None:
         """Process state request response from the bulb to the entity state."""
         self._attr_assumed_state = True
 
@@ -758,7 +767,11 @@ class KlyqaLight(LightEntity):
             )
             self._attr_hs_color = color_util.color_RGB_to_hs(*self._attr_rgb_color)
 
-        self._attr_brightness = int((float(state_complete.brightness) / 100) * 255)
+        self._attr_brightness = (
+            int((float(state_complete.brightness) / 100) * 255)
+            if state_complete.brightness is not None
+            else None
+        )
 
         self._attr_is_on = (
             isinstance(state_complete.status, list) and state_complete.status[0] == "on"

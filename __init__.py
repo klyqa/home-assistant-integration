@@ -22,7 +22,7 @@
 #
 ##############################################################################
 from __future__ import annotations
-from typing import Callable
+from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -64,16 +64,16 @@ SCAN_INTERVAL = timedelta(seconds=120)
 class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
     """HAKlyqaAccount."""
 
-    hass: HomeAssistant | None
+    hass: HomeAssistant
 
     polling: bool
 
     def __init__(
         self,
+        hass: HomeAssistant,
         data_communicator: api.Data_communicator,
         username: str = "",
         password: str = "",
-        hass: HomeAssistant | None = None,
         polling: bool = True,
     ) -> None:
         """HAKlyqaAccount."""
@@ -91,7 +91,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             )
         return ret
 
-    async def update_account(self, device_type: str) -> bool:
+    async def update_account(self, device_type: str) -> None:
         """Update_account."""
 
         await self.request_account_settings()
@@ -101,8 +101,12 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
 
     async def process_account_settings(self, device_type: str) -> None:
         """Process_account_settings."""
+        if self.acc_settings is None:
+            return None
 
         def sync_account_devices_with_ha_entities(device_type: str) -> None:
+            if self.acc_settings is None:
+                return None
             entity_registry = ent_reg.async_get(self.hass)
 
             for device in self.acc_settings["devices"]:
@@ -112,15 +116,17 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 platform: str = ""
                 entity_id: str = ""
                 event: str = ""
-                if device_type == "light" and device["productId"].find(
-                    ".lighting"
-                ) > -1:
+                if (
+                    device_type == api.DeviceType.lighting.name
+                    and device["productId"].find(".lighting") > -1
+                ):
                     platform = Platform.LIGHT
                     entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_LIGHT
-                elif device_type == "vacuum" and device["productId"].find(
-                    ".cleaning"
-                ) > -1:
+                elif (
+                    device_type == api.DeviceType.cleaner.name
+                    and device["productId"].find(".cleaning") > -1
+                ):
                     platform = Platform.VACUUM
                     entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
                     event = EVENT_KLYQA_NEW_VC
@@ -130,10 +136,10 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     platform, DOMAIN, u_id
                 )
 
-                if not registered_entity_id or not self.hass.states.get(entity_id):
-                    self.hass.bus.fire(event, device)
+                # if not registered_entity_id or not self.hass.states.get(entity_id):
+                self.hass.bus.fire(event, device)
 
-            if device_type == "light":
+            if device_type == api.DeviceType.lighting.name:
                 for group in self.acc_settings["deviceGroups"]:
                     u_id = api.format_uid(group["id"])
 
@@ -155,7 +161,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                             self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
 
         klyqa_new_light_registered: list[str]
-        if device_type == "light":
+        if device_type == api.DeviceType.lighting.name:
             klyqa_new_light_registered = [
                 key
                 for key, _ in self.hass.bus.async_listeners().items()
@@ -164,7 +170,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             if len(klyqa_new_light_registered) == 2:
                 sync_account_devices_with_ha_entities(device_type)
 
-        elif device_type == "vacuum":
+        elif device_type == api.DeviceType.cleaner.name:
             klyqa_new_light_registered = [
                 key
                 for key, _ in self.hass.bus.async_listeners().items()
@@ -186,7 +192,7 @@ class KlyqaData:
         self.data_communicator: api.Data_communicator = data_communicator
         self.polling: bool = polling
         self.entity_ids: set[str | None] = set()
-        self.entries: dict[str, ConfigEntry] = {}
+        self.entries: dict[str, HAKlyqaAccount] = {}
         self.remove_listeners: list[Callable] = []
         self.entities_area_update: dict[str, set[str]] = {}
 
@@ -195,7 +201,7 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     """Set up the klyqa component."""
     if DOMAIN in hass.data:
         return True
-    hass.data[DOMAIN]: KlyqaData = KlyqaData(api.Data_communicator())
+    hass.data[DOMAIN] = KlyqaData(api.Data_communicator())
     klyqa: KlyqaData = hass.data[DOMAIN]
 
     await klyqa.data_communicator.bind_ports()
@@ -213,37 +219,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     account: HAKlyqaAccount | None = None
 
-    if (
-        # DOMAIN in hass.data
-        # and hasattr(klyqa_data, "entries")
-        # and
-        entry.entry_id
-        in klyqa_data.entries
-    ):
+    if entry.entry_id in klyqa_data.entries:
         account = klyqa_data.entries[entry.entry_id]
-        await hass.async_add_executor_job(account.shutdown)
+        if account:
+            await hass.async_add_executor_job(account.shutdown)
 
-        account.username = username
-        account.password = password
-        account.data_communicator = klyqa_data.data_communicator
+            account.username = username
+            account.password = password
+            account.data_communicator = klyqa_data.data_communicator
 
     else:
         account = HAKlyqaAccount(
+            hass,
             klyqa_data.data_communicator,
             username,
             password,
-            hass,
         )
         if not hasattr(klyqa_data, "entries"):
             klyqa_data.entries = {}
         klyqa_data.entries[entry.entry_id] = account
 
-    if not await account.login():
+    if not account or not await account.login():
         return False
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, account.shutdown)
+    async def shutdown_klyqa_account(*_: Any) -> None:
+        if account:
+            account.shutdown()
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, shutdown_klyqa_account)
 
     # For previous config entries where unique_id is None
     if entry.unique_id is None:
