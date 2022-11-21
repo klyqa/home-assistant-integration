@@ -7,7 +7,8 @@
   "dependencies": ["network"],
   "requirements": ["klyqa_ctl==1.0.11"],
   "codeowners": [
-    "@fraizy22", "@klyqa"
+    "@fraizy22",
+    "@klyqa"
   ],
   "iot_class": "local_push"
 }

@@ -687,7 +687,7 @@ class KlyqaLight(LightEntity):
             nonlocal callback  # , send_event_cb
             if callback is not None:
                 await callback(msg, uid)
-
+                
             LOGGER.debug("Send_answer_cb %s", str(uid))
 
             if uid != self.u_id:
