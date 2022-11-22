@@ -56,7 +56,8 @@ from homeassistant.const import (
 )
 
 PLATFORMS: list[Platform] = [Platform.LIGHT]
-SCAN_INTERVAL = timedelta(seconds=30)
+SCAN_INTERVAL_SECS = 120
+SCAN_INTERVAL = timedelta(seconds=SCAN_INTERVAL_SECS)
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
@@ -83,9 +84,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
-    host = str(entry.data.get(CONF_HOST))
-    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
-    polling = bool(entry.data.get(CONF_POLLING))
+    host = (
+        str(entry.data.get(CONF_HOST))
+        if entry.data.get(CONF_HOST) is not None
+        else "https://app-api.prod.qconnex.io"
+    )
+    scan_interval_raw = entry.data.get(CONF_SCAN_INTERVAL)
+    scan_interval = (
+        int(scan_interval_raw) if scan_interval_raw is not None else SCAN_INTERVAL_SECS
+    )
+    polling = (
+        bool(entry.data.get(CONF_POLLING))
+        if entry.data.get(CONF_POLLING) is not None
+        else True
+    )
     global SCAN_INTERVAL
     SCAN_INTERVAL = timedelta(seconds=scan_interval)
     sync_rooms = (
