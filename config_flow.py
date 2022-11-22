@@ -30,16 +30,18 @@ from homeassistant.const import (
 )
 from homeassistant.data_entry_flow import FlowResult
 
-user_step_data_schema =  vol.Schema({
-    vol.Required(CONF_USERNAME, default=""): cv.string,
-    vol.Required(CONF_PASSWORD, default=""): cv.string,
-    vol.Required(CONF_SCAN_INTERVAL, default=60): int,
-    vol.Required(
-        CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"
-    ): bool,
-    vol.Required(CONF_POLLING, default=True): bool,
-    vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
-})
+user_step_data_schema = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME, default=""): cv.string,
+        vol.Required(CONF_PASSWORD, default=""): cv.string,
+        vol.Required(CONF_SCAN_INTERVAL, default=120): int,
+        vol.Required(
+            CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"
+        ): bool,
+        vol.Required(CONF_POLLING, default=True): bool,
+        vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
+    }
+)
 
 NoneType = type(None)
 
@@ -155,7 +157,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.username: str | None = None
         self.password: str | None = None
         self.cache: str | None = None
-        self.scan_interval: int = 30
+        self.scan_interval: int = 120
         self.host: str | None = None
         self.sync_rooms: bool | None = None
         self.polling: bool | None = None
@@ -172,14 +174,20 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         if not self.host:
             self.host = "https://app-api.prod.qconnex.io"
-        if cached:
 
-            self.username = str(integration_data[CONF_USERNAME])
-            self.password = str(integration_data[CONF_PASSWORD])
-            self.scan_interval = int(integration_data[CONF_SCAN_INTERVAL])
-            self.host = str(integration_data[CONF_HOST])
-            self.sync_rooms = bool(integration_data[CONF_SYNC_ROOMS])
-            self.polling = bool(integration_data[CONF_POLLING])
+        if cached:
+            if CONF_USERNAME in integration_data:
+                self.username = str(integration_data[CONF_USERNAME])
+            if CONF_PASSWORD in integration_data:
+                self.password = str(integration_data[CONF_PASSWORD])
+            if CONF_SCAN_INTERVAL in integration_data:
+                self.scan_interval = int(integration_data[CONF_SCAN_INTERVAL])
+            if CONF_HOST in integration_data:
+                self.host = str(integration_data[CONF_HOST])
+            if CONF_SYNC_ROOMS in integration_data:
+                self.sync_rooms = bool(integration_data[CONF_SYNC_ROOMS])
+            if CONF_POLLING in integration_data:
+                self.polling = bool(integration_data[CONF_POLLING])
 
     def get_klyqa(self) -> HAKlyqaAccount | NoneType:
         if self.klyqa:
