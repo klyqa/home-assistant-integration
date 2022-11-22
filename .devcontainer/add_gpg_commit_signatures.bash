@@ -11,6 +11,5 @@ rm gpg.key
 
 git config --global commit.gpgSign true
 git config --global tag.gpgSign true
-git config --global push.gpgSign true
 )
 exit 0
