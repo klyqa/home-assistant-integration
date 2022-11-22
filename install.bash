@@ -75,11 +75,25 @@ if [ -n "$haPath" ]; then
     info "Upgrading and install required pip packages.."
     (cd klyqa && pip install --upgrade -r requirements.txt)
 
-    if [ -f "$haPath/configuration.yaml" ]; then
-        printf "Add example klyqa config to configuration.yaml (connect your klyqa account in homeassistant) [Y/n]? "
-        read -n1 x; echo
-        if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
-            cat <<EOF >> $haPath/configuration.yaml
+#     if [ -f "$haPath/configuration.yaml" ]; then
+#         printf "Add example klyqa config to configuration.yaml (connect your klyqa account in homeassistant) [Y/n]? "
+#         read -n1 x; echo
+#         if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
+#             cat <<EOF >> $haPath/configuration.yaml
+# # light:
+# #   - platform: klyqa
+# #     username: your_username@yourprovider.com
+# #     password: !secret your_password_from_secret.yaml
+# #     sync_rooms: True
+# #     polling: True
+# #     scan_interval: 120
+# EOF
+#         fi
+#     else
+#         printf "Cannot find configuration.yaml. Print Klyqa example configuration in the terminal [Y/n]? "
+#         read -n1 x; echo
+#         if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
+#             cat <<EOF
 # light:
 #   - platform: klyqa
 #     username: your_username@yourprovider.com
@@ -87,23 +101,9 @@ if [ -n "$haPath" ]; then
 #     sync_rooms: True
 #     polling: True
 #     scan_interval: 120
-EOF
-        fi
-    else
-        printf "Cannot find configuration.yaml. Print Klyqa example configuration in the terminal [Y/n]? "
-        read -n1 x; echo
-        if [ "$all_yes" = "y" ] || [ "$x" = "y" ] || [ "$x" = "Y" ]; then
-            cat <<EOF
-light:
-  - platform: klyqa
-    username: your_username@yourprovider.com
-    password: !secret your_password_from_secret.yaml
-    sync_rooms: True
-    polling: True
-    scan_interval: 120
-EOF
-        fi
-    fi
+# EOF
+#         fi
+#     fi
 
     info "Remember to restart Home Assistant before you configure it"
 
