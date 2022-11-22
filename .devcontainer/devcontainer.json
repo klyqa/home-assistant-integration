@@ -31,6 +31,6 @@
     "donjayamanne.git-extension-pack",
     "howardzuo.vscode-git-tags",
     "donjayamanne.python-environment-manager"
-  ]
-  // "postCreateCommand": "./.devcontainer/postCreateCommand.sh"
+  ],
+  "postCreateCommand": "bash -i ./.devcontainer/postCreateCommand.sh"
 }
