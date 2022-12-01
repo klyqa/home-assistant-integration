@@ -4,7 +4,7 @@ services:
     container_name: homeassistant_klyqa
     image: "homeassistant_klyqa"
     volumes:
-      - /PATH_TO_YOUR_CONFIG:/config
+      - ~/.ha_config:/config
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     privileged: true
