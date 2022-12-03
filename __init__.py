@@ -1,37 +1,26 @@
 """Support for Klyqa smart devices."""
-###############################################################################
-#
-#                   The Klyqa Home Assistant Integration
-#
-# Company: QConnex GmbH / Klyqa
-#
-# Author: Frederick Stallmeyer <frederick.stallmeyer@gmx.de>
-#
-###############################################################################
-#
-#   Features:
-#       + On try switchup lamp, search the lamp in the network
-#       + Load and cache profiles
-#       + Address cache on discover devices and connections
-#       + Mutexes asyncio lock based
-#       + (Rooms working), Timers, Routines, Device Groups
-#       + Remove entities when they are gone from the klyqa account
-#
-#   QA:
-#       + Convert magicvalues to constants (commands, arguments, values)
-#
-##############################################################################
 from __future__ import annotations
-from typing import Any, Callable
 
+from collections.abc import Callable
+from datetime import timedelta
+from typing import Any
+
+from klyqa_ctl import klyqa_ctl as api
+
+from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
+from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-
-
-from homeassistant.helpers import (
-    entity_registry as ent_reg,
+from homeassistant.const import (
+    ATTR_RESTORED,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
+    Platform,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as ent_reg
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import slugify
 
 from .const import (
     DOMAIN,
@@ -39,26 +28,11 @@ from .const import (
     EVENT_KLYQA_NEW_LIGHT_GROUP,
     EVENT_KLYQA_NEW_VC,
 )
-from homeassistant.helpers.typing import ConfigType
-
-from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
-from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
-from homeassistant.util import slugify
-
-from datetime import timedelta
-
-# from .datacoordinator import HAKlyqaAccount
-
-from klyqa_ctl import klyqa_ctl as api
-
-from homeassistant.const import (
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    EVENT_HOMEASSISTANT_STOP,
-)
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
-SCAN_INTERVAL = timedelta(seconds=120)
+SCAN_INTERVAL: timedelta = timedelta(seconds=120)
+
+""" Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on"""
 
 
 class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
@@ -75,13 +49,15 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         username: str = "",
         password: str = "",
         polling: bool = True,
+        entry: ConfigEntry | None = None,
     ) -> None:
         """HAKlyqaAccount."""
         super().__init__(data_communicator, username, password)
         self.hass = hass
         self.polling = polling
+        self.entry: ConfigEntry | None = entry
 
-    async def login(self, print_onboarded_devices=False) -> bool:
+    async def login(self, print_onboarded_devices: bool = False) -> bool:
         """Login."""
         ret: bool = await super().login(print_onboarded_devices=False)
         if ret:
@@ -136,21 +112,38 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     platform, DOMAIN, u_id
                 )
 
-                # if not registered_entity_id or not self.hass.states.get(entity_id):
-                self.hass.bus.fire(event, device)
+                existing = (
+                    self.hass.states.get(registered_entity_id)
+                    if registered_entity_id
+                    else self.hass.states.get(entity_id)
+                )
+                if (
+                    not registered_entity_id
+                    or not existing
+                    or ATTR_RESTORED in existing.attributes
+                ):
+                    self.hass.bus.fire(event, device)
 
             if device_type == api.DeviceType.lighting.name:
                 for group in self.acc_settings["deviceGroups"]:
                     u_id = api.format_uid(group["id"])
+                    entity_id = LIGHT_ENTITY_ID_FORMAT.format(slugify(group["id"]))
 
                     registered_entity_id = entity_registry.async_get_entity_id(
-                        Platform.LIGHT, DOMAIN, slugify(group["name"])  # u_id
+                        Platform.LIGHT, DOMAIN, slugify(group["id"])  # u_id
+                    )
+                    existing = (
+                        self.hass.states.get(registered_entity_id)
+                        if registered_entity_id
+                        else self.hass.states.get(entity_id)
                     )
 
-                    if not registered_entity_id or not self.hass.states.get(
-                        LIGHT_ENTITY_ID_FORMAT.format(slugify(group["name"]))
+                    if (
+                        not registered_entity_id
+                        or not existing
+                        or ATTR_RESTORED in existing.attributes
                     ):
-                        """found klyqa device not in the light entities"""
+                        # found klyqa device not in the light entities
                         if (
                             len(group["devices"]) > 0
                             and "productId" in group["devices"][0]
@@ -165,7 +158,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             klyqa_new_light_registered = [
                 key
                 for key, _ in self.hass.bus.async_listeners().items()
-                if key == EVENT_KLYQA_NEW_LIGHT or key == EVENT_KLYQA_NEW_LIGHT_GROUP
+                if key in (EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP)
             ]
             if len(klyqa_new_light_registered) == 2:
                 sync_account_devices_with_ha_entities(device_type)
@@ -178,8 +171,6 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
             ]
             if len(klyqa_new_light_registered) == 1:
                 sync_account_devices_with_ha_entities(device_type)
-
-        return True
 
 
 class KlyqaData:
@@ -230,10 +221,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     else:
         account = HAKlyqaAccount(
-            hass,
-            klyqa_data.data_communicator,
-            username,
-            password,
+            hass, klyqa_data.data_communicator, username, password, entry=entry
         )
         if not hasattr(klyqa_data, "entries"):
             klyqa_data.entries = {}
@@ -256,7 +244,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry, unique_id=entry.data[CONF_USERNAME]
         )
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
@@ -265,10 +253,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     klyqa_data: KlyqaData = hass.data[DOMAIN]
 
-    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if not unload_ok:
-        return unload_ok
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
 
     while klyqa_data.remove_listeners:
         listener: Callable = klyqa_data.remove_listeners.pop(-1)
