@@ -1,39 +1,19 @@
 """Config flow for Klyqa."""
 from __future__ import annotations
 
-from typing import Any, cast
-from numpy import integer
 import asyncio
+from typing import Any
 
+from klyqa_ctl import klyqa_ctl as api
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_entry_flow
-
-from klyqa_ctl import klyqa_ctl as api
-
-from homeassistant.core import callback
-from homeassistant.config_entries import ConfigEntry
-
-from . import HAKlyqaAccount
-
-from .const import CONF_POLLING, DOMAIN, LOGGER
+from homeassistant import config_entries
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 
-from homeassistant import config_entries
-from homeassistant.const import (
-    CONF_PASSWORD,
-    CONF_USERNAME,
-)
-from homeassistant.data_entry_flow import FlowResult
-
-user_step_data_schema = vol.Schema(
-    {
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-    }
-)
+from .const import DOMAIN, LOGGER
 
 NoneType = type(None)
 
