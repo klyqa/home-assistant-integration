@@ -52,17 +52,6 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle a flow initialized by the user."""
-        if self._async_current_entries():
-            return self.async_abort(reason="single_instance_allowed")
-
-        if (
-            self.hass
-            and DOMAIN in self.hass.data
-            and len(self.hass.data[DOMAIN].entries)
-        ):
-            # already logged in from platform or other way
-            return self.async_abort(reason="single_instance_allowed")
-
         if user_input is None:
             return await self._show_setup_form()
 
