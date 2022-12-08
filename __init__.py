@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
+from klyqa_ctl.general.general import Device_config
 
 from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
 from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
@@ -50,12 +51,14 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         password: str = "",
         polling: bool = True,
         entry: ConfigEntry | None = None,
+        device_configs={},
     ) -> None:
         """HAKlyqaAccount."""
-        super().__init__(data_communicator, username, password)
+        super().__init__(data_communicator, username, password, device_configs)
         self.hass = hass
         self.polling = polling
         self.entry: ConfigEntry | None = entry
+        self.interactive_prompts = False
 
     async def login(self, print_onboarded_devices: bool = False) -> bool:
         """Login."""
@@ -70,8 +73,8 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
     async def update_account(self, device_type: str) -> None:
         """Update_account."""
 
-        await self.request_account_settings()
-        # await self.request_account_settings_eco()
+        # await self.request_account_settings()
+        await self.request_account_settings_eco()
 
         await self.process_account_settings(device_type)
 
@@ -122,7 +125,7 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                     or not existing
                     or ATTR_RESTORED in existing.attributes
                 ):
-                    self.hass.bus.fire(event, device)
+                    self.hass.bus.fire(event, {"user": self.username, "data": device})
 
             if device_type == api.DeviceType.lighting.name:
                 for group in self.acc_settings["deviceGroups"]:
@@ -151,7 +154,10 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                                 "@klyqa.lighting"
                             )
                         ):
-                            self.hass.bus.fire(EVENT_KLYQA_NEW_LIGHT_GROUP, group)
+                            self.hass.bus.fire(
+                                EVENT_KLYQA_NEW_LIGHT_GROUP,
+                                {"user": self.username, "data": group},
+                            )
 
         klyqa_new_light_registered: list[str]
         if device_type == api.DeviceType.lighting.name:
@@ -186,6 +192,7 @@ class KlyqaData:
         self.entries: dict[str, HAKlyqaAccount] = {}
         self.remove_listeners: list[Callable] = []
         self.entities_area_update: dict[str, set[str]] = {}
+        self.device_configs: dict[str, Device_config] = {}
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:

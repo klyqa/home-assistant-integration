@@ -28,7 +28,7 @@ from homeassistant.components.light import (
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.const import CONF_USERNAME, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
@@ -93,9 +93,14 @@ async def async_setup_klyqa(
 
     entity_registry = er.async_get(hass)
 
+    username = entry.data.get(CONF_USERNAME) if entry else ""
+
     async def add_new_light_group(event: Event) -> None:
 
-        device_settings = event.data
+        user: str = event.data["user"]
+        if user != username:
+            return
+        device_settings = event.data["data"]
 
         entity = KlyqaLightGroup(hass, device_settings)
 
@@ -103,19 +108,23 @@ async def async_setup_klyqa(
 
     async def add_new_entity(event: Event) -> None:
 
-        device_settings: dict[str, Any] = event.data
+        user: str = event.data["user"]
+        if user != username:
+            return
+
+        device_settings: dict[str, Any] = event.data["data"]
 
         u_id: str = api.format_uid(device_settings["localDeviceId"])
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        light_state: KlyqaDevice | KlyqaBulb = (
+        device: KlyqaDevice | KlyqaBulb = (
             klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaBulb()
         )
 
         # Clear status added from cloud when the bulb is not connected to the cloud so offline
-        if not light_state.cloud.connected:
-            light_state.status = None
+        if not device.cloud.connected:
+            device.status = None
 
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.LIGHT, DOMAIN, u_id
@@ -132,7 +141,7 @@ async def async_setup_klyqa(
 
         new_entity: KlyqaLight = KlyqaLight(
             device_settings,
-            light_state,
+            device,
             klyqa,
             entity_id,
             should_poll=klyqa.polling,
@@ -140,7 +149,7 @@ async def async_setup_klyqa(
             hass=hass,
         )
         await new_entity.async_update_settings()
-        new_entity.update_device_state(light_state.status)
+        new_entity.update_device_state(device.status)
         if new_entity:
             add_entities([new_entity], True)
 
@@ -231,21 +240,29 @@ class KlyqaLight(RestoreEntity, LightEntity):
 
     async def set_device_capabilities(self) -> None:
         """Look up profile."""
-        if self.settings["productId"] in api.device_configs:
-            self.device_config = api.device_configs[self.settings["productId"]]
+        # if self.settings["productId"] in api.device_configs:
+        if self._klyqa_device.device_config:
+            self.device_config = (
+                self._klyqa_device.device_config
+            )  # api.device_configs[self.settings["productId"]]
         else:
             acc: HAKlyqaAccount = self._klyqa_account
-            response_object: TypeJSON | None = await self.hass.async_add_executor_job(
-                partial(
-                    acc.request,
-                    "/config/product/" + self.settings["productId"],
-                    timeout=30,
-                )
+            # response_object: TypeJSON | None = await self.hass.async_add_executor_job(
+            #     partial(
+            #         acc.request,
+            #         "/config/product/" + self.settings["productId"],
+            #         timeout=30,
+            #     )
+            # )
+            response_object: TypeJSON | None = await acc.request(
+                "/config/product/" + self.settings["productId"],
+                timeout=30,
             )
             if response_object is not None:
                 self.device_config = response_object
-            else:
-                return
+
+        if not self.device_config:
+            return
 
         if (
             self.device_config

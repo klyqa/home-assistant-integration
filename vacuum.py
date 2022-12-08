@@ -10,6 +10,7 @@ from typing import Any
 from klyqa_ctl import klyqa_ctl as api
 from klyqa_ctl.devices.device import format_uid
 from klyqa_ctl.devices.vacuum import KlyqaVCResponseStatus
+from klyqa_ctl.general.general import TypeJSON
 
 from homeassistant.components.vacuum import (
     ENTITY_ID_FORMAT,
@@ -23,7 +24,7 @@ from homeassistant.components.vacuum import (
     VacuumEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.const import CONF_USERNAME, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
@@ -91,7 +92,11 @@ async def async_setup_klyqa(
 
     async def add_new_entity(event: Event) -> None:
 
-        device_settings: dict[str, Any] = event.data
+        user: str = event.data["user"]
+        if user != entry.data.get(CONF_USERNAME):
+            return
+
+        device_settings: dict[str, Any] = event.data["data"]
 
         u_id: str = format_uid(device_settings["localDeviceId"])
 
@@ -213,6 +218,18 @@ class KlyqaVC(StateVacuumEntity):
 
         if self._klyqa_account.acc_settings is None:
             return
+
+        """Look up profile."""
+        if self._klyqa_device.device_config:
+            self.device_config = self._klyqa_device.device_config
+        else:
+            acc: HAKlyqaAccount = self._klyqa_account
+            response_object: TypeJSON | None = await acc.request(
+                "/config/product/" + self.settings["productId"],
+                timeout=30,
+            )
+            if response_object is not None:
+                self.device_config = response_object
 
         devices_settings: Any | None = (
             self._klyqa_account.acc_settings["devices"]
