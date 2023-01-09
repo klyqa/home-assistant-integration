@@ -36,7 +36,7 @@ from . import HAKlyqaAccount
 from .const import DOMAIN, EVENT_KLYQA_NEW_VC, LOGGER
 
 TIMEOUT_SEND = 30
-SCAN_INTERVAL: timedelta = timedelta(seconds=60)
+SCAN_INTERVAL: timedelta = timedelta(seconds=210)
 
 SUPPORT_KLYQA: int = (
     VacuumEntityFeature.BATTERY

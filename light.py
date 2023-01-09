@@ -53,7 +53,7 @@ from . import HAKlyqaAccount, KlyqaData
 from .const import DOMAIN, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP, LOGGER
 
 TIMEOUT_SEND = 30
-SCAN_INTERVAL = timedelta(seconds=12160)
+SCAN_INTERVAL = timedelta(seconds=210)
 
 SUPPORT_KLYQA = LightEntityFeature.TRANSITION
 
@@ -275,6 +275,8 @@ class KlyqaLight(RestoreEntity, LightEntity):
                 if "msg_key" in x and x["msg_key"] == "temperature"
             ]:
                 self._attr_supported_color_modes.add(ColorMode.COLOR_TEMP)
+                self._attr_max_color_temp_kelvin = 6500
+                self._attr_min_color_temp_kelvin = 2000
 
             if [x for x in device_traits if "msg_key" in x and x["msg_key"] == "color"]:
                 self._attr_supported_color_modes.add(ColorMode.RGB)
@@ -595,7 +597,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         """Send_to_bulbs."""
 
         async def send_answer_cb(msg: api.Message, uid: str) -> None:
-            nonlocal callback  # , send_event_cb
+            nonlocal callback
             if callback is not None:
                 await callback(msg, uid)
 
@@ -610,7 +612,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
                     self.schedule_update_ha_state()
 
         parser = api.get_description_parser()
-        args.extend(["--local", "--device_unitids", f"{self.u_id}"])
+        args.extend(["--debug", "--local", "--device_unitids", f"{self.u_id}"])
 
         args.insert(0, api.DeviceType.lighting.name)
         api.add_config_args(parser=parser)
