@@ -28,7 +28,7 @@ from homeassistant.components.light import (
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_USERNAME, EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
@@ -48,7 +48,6 @@ from homeassistant.util.color import (
     color_temperature_mired_to_kelvin,
 )
 
-# from klyqa_ctl.general.general import DeviceType
 from . import HAKlyqaAccount, KlyqaData
 from .const import DOMAIN, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP, LOGGER
 

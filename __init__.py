@@ -54,11 +54,10 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
         device_configs={},
     ) -> None:
         """HAKlyqaAccount."""
-        super().__init__(data_communicator, username, password, device_configs)
+        super().__init__(data_communicator, username, password)
         self.hass = hass
         self.polling = polling
         self.entry: ConfigEntry | None = entry
-        self.interactive_prompts = False
 
     async def login(self, print_onboarded_devices: bool = False) -> bool:
         """Login."""
@@ -192,7 +191,6 @@ class KlyqaData:
         self.entries: dict[str, HAKlyqaAccount] = {}
         self.remove_listeners: list[Callable] = []
         self.entities_area_update: dict[str, set[str]] = {}
-        self.device_configs: dict[str, Device_config] = {}
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
