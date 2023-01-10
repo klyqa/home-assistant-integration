@@ -1,11 +1,8 @@
-FROM python:3.9-alpine
+FROM ghcr.io/home-assistant/home-assistant:stable
 
-# ADD bulb_cli.py /
-ADD .git /
-ADD *.py /
-ADD requirements.txt /
+# Needed dependencies for building the Klyqa integration python requirements.
+# RUN apk --no-cache --update add musl-dev linux-headers g++ python3-dev gfortran py-pip build-base
+RUN apk --no-cache --update add build-base
 
-RUN apk --no-cache add bash git gcc libc-dev bash-completion coreutils nano
-# RUN git config --global --unset commit.gpgsign
-#RUN pip install -r requirements.txt
-# ENTRYPOINT ["/bulb_cli.py"]
+COPY install_to_ha.sh /install_to_ha.sh
+RUN bash -xc /install_to_ha.sh /config development
