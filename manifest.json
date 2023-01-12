@@ -9,7 +9,6 @@
   ],
   "requirements": [
     "pycryptodomex==3.14.1",
-    "websockets",
     "aiofiles",
     "python-slugify",
     "klyqa_ctl==1.0.3"

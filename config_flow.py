@@ -1,22 +1,18 @@
 """Config flow for Klyqa."""
 from __future__ import annotations
 
-from typing import Any, cast
-from numpy import integer
+from typing import Any
 import asyncio
 
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_entry_flow
 
 from klyqa_ctl import klyqa_ctl as api
 
-from homeassistant.core import callback
 from homeassistant.config_entries import ConfigEntry
 
-from .datacoordinator import HAKlyqaAccount, KlyqaDataCoordinator
+from .datacoordinator import HAKlyqaAccount
 
 from .const import CONF_POLLING, DOMAIN, LOGGER, CONF_SYNC_ROOMS
 import homeassistant.helpers.config_validation as cv
