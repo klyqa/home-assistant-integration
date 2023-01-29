@@ -8,9 +8,10 @@ from functools import partial
 from typing import Any
 
 import klyqa_ctl as api
-from klyqa_ctl.devices.device import KlyqaDevice
-from klyqa_ctl.devices.light import KlyqaBulb
-from klyqa_ctl.general.general import TypeJSON
+from klyqa_ctl.devices.device import Device as KlyqaDevice
+from klyqa_ctl.account import AccountDevice
+from klyqa_ctl.general.general import TypeJson
+from klyqa_ctl.devices.light.light import Light as KlyqaLibLight
 
 from homeassistant.components.group.light import LightGroup
 from homeassistant.components.light import (
@@ -48,7 +49,7 @@ from homeassistant.util.color import (
     color_temperature_mired_to_kelvin,
 )
 
-from . import HAKlyqaAccount, KlyqaData
+from . import KlyqaAccount, KlyqaControl
 from .const import DOMAIN, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP, LOGGER
 
 TIMEOUT_SEND = 30
@@ -62,10 +63,10 @@ async def async_setup_entry(
 ) -> None:
     """Async_setup_entry."""
 
-    klyqa = hass.data[DOMAIN].entries[entry.entry_id]
-    if klyqa:
+    acc: KlyqaAccount = hass.data[DOMAIN].entries[entry.entry_id]
+    if acc:
         await async_setup_klyqa(
-            hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
+            hass, ConfigType(entry.data), async_add_entities, entry=entry, acc=acc
         )
 
 
@@ -73,18 +74,18 @@ async def async_setup_klyqa(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
-    klyqa: HAKlyqaAccount,
+    acc: KlyqaAccount,
     discovery_info: DiscoveryInfoType | None = None,
     entry: ConfigEntry | None = None,
 ) -> None:
     """Set up the Klyqa Light platform."""
 
-    klyqa_data: KlyqaData = hass.data[DOMAIN]
+    klyqa_data: KlyqaControl = hass.data[DOMAIN]
 
     async def on_hass_stop(event: Event) -> None:
         """Stop push updates when hass stops."""
         # await klyqa.search_and_send_loop_task_stop()
-        await hass.async_add_executor_job(klyqa.shutdown)
+        await hass.async_add_executor_job(acc.shutdown)
 
     if entry:
         listener = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
@@ -92,16 +93,16 @@ async def async_setup_klyqa(
 
     entity_registry = er.async_get(hass)
 
-    username = entry.data.get(CONF_USERNAME) if entry else ""
+    username: str = acc.username  # entry.data.get(CONF_USERNAME) if entry else ""
 
     async def add_new_light_group(event: Event) -> None:
 
         user: str = event.data["user"]
         if user != username:
             return
-        device_settings = event.data["data"]
+        device_settings: dict[Any, Any] = event.data["data"]
 
-        entity = KlyqaLightGroup(hass, device_settings)
+        entity: KlyqaLightGroup = KlyqaLightGroup(hass, device_settings)
 
         add_entities([entity], True)
 
@@ -117,8 +118,8 @@ async def async_setup_klyqa(
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        device: KlyqaDevice | KlyqaBulb = (
-            klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaBulb()
+        device: AccountDevice | KlyqaLibLight = (
+            acc.devices[u_id] if u_id in acc.devices else KlyqaLibLight()
         )
 
         # Clear status added from cloud when the bulb is not connected to the cloud so offline
@@ -141,9 +142,9 @@ async def async_setup_klyqa(
         new_entity: KlyqaLight = KlyqaLight(
             device_settings,
             device,
-            klyqa,
+            acc,
             entity_id,
-            should_poll=klyqa.polling,
+            should_poll=acc.polling,
             config_entry=entry,
             hass=hass,
         )
@@ -160,7 +161,8 @@ async def async_setup_klyqa(
         hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT_GROUP, add_new_light_group)
     )
 
-    await klyqa.update_account(device_type=api.DeviceType.lighting.name)
+    await acc.update_account(device_type=api.DeviceType.lighting.name)
+    acc.add_entities_handlers.add(add_new_entity)
     return
 
 
@@ -194,8 +196,8 @@ class KlyqaLight(RestoreEntity, LightEntity):
     _attr_supported_features = SUPPORT_KLYQA
     _attr_transition_time = 500
 
-    _klyqa_account: HAKlyqaAccount
-    _klyqa_device: api.KlyqaBulb
+    _klyqa_account: KlyqaAccount
+    _klyqa_device: AccountDevice
     settings: dict[Any, Any] = {}
     config_entry: ConfigEntry | None = None
     entity_registry: EntityRegistry | None = None
@@ -209,7 +211,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         self,
         settings: dict[str, Any],
         device: api.KlyqaBulb,
-        klyqa_account: HAKlyqaAccount,
+        klyqa_account: KlyqaAccount,
         entity_id: str,
         hass: HomeAssistant,
         should_poll: bool = True,
@@ -245,7 +247,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
                 self._klyqa_device.device_config
             )  # api.device_configs[self.settings["productId"]]
         else:
-            acc: HAKlyqaAccount = self._klyqa_account
+            acc: KlyqaAccount = self._klyqa_account
             # response_object: TypeJSON | None = await self.hass.async_add_executor_job(
             #     partial(
             #         acc.request,

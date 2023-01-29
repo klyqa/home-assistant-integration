@@ -1,5 +1,6 @@
 """Support for Klyqa smart devices."""
 from __future__ import annotations
+import asyncio
 
 from collections.abc import Callable
 from datetime import timedelta
@@ -7,6 +8,7 @@ from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
 from klyqa_ctl.general.general import Device_config
+from klyqa_ctl.general.general import async_json_cache
 
 from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
 from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
@@ -36,8 +38,8 @@ SCAN_INTERVAL: timedelta = timedelta(seconds=120)
 """ Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on"""
 
 
-class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
-    """HAKlyqaAccount."""
+class KlyqaAccount(api.Account):  # type: ignore[misc]
+    """Klyqa account."""
 
     hass: HomeAssistant
 
@@ -45,19 +47,43 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
 
     def __init__(
         self,
+        ctl_data: api.ControllerData,
+        cloud: api.CloudBackend | None,
         hass: HomeAssistant,
-        data_communicator: api.Data_communicator,
-        username: str = "",
-        password: str = "",
+        # data_communicator: api.Data_communicator,
+        # username: str = "",
+        # password: str = "",
         polling: bool = True,
-        entry: ConfigEntry | None = None,
-        device_configs={},
+        config_entry: ConfigEntry | None = None,
+        # device_configs={},
     ) -> None:
         """HAKlyqaAccount."""
-        super().__init__(data_communicator, username, password)
+        super().__init__(ctl_data, cloud)
         self.hass = hass
         self.polling = polling
-        self.entry: ConfigEntry | None = entry
+        self.config_entry: ConfigEntry | None = config_entry
+        self.add_entities_handlers: set[Callable] = set()
+
+    @classmethod
+    async def create_klyqa_acc(
+        cls: Any,
+        client: api.Client,
+        hass: HomeAssistant,
+        username: str = "",
+        password: str = "",
+    ) -> KlyqaAccount:
+        """Factory for an account."""
+
+        acc: KlyqaAccount = KlyqaAccount(client.ctl_data, client.cloud, hass)
+        acc.username = username
+        acc.password = password
+        acc.print_onboarded_devices = False
+
+        acc._attr_settings_lock = asyncio.Lock()
+        await acc.init()
+        # if client.cloud:
+        #     await acc.login(acc.print_onboarded_devices)
+        return acc
 
     async def login(self, print_onboarded_devices: bool = False) -> bool:
         """Login."""
@@ -178,29 +204,64 @@ class HAKlyqaAccount(api.Klyqa_account):  # type: ignore[misc]
                 sync_account_devices_with_ha_entities(device_type)
 
 
-class KlyqaData:
+class KlyqaControl:
     """KlyqaData class."""
 
-    def __init__(
-        self, data_communicator: api.Data_communicator, polling: bool = True
-    ) -> None:
+    def __init__(self, polling: bool = True) -> None:
         """Initialize the system."""
-        self.data_communicator: api.Data_communicator = data_communicator
+        # self.data_communicator: api.Data_communicator = data_communicator
         self.polling: bool = polling
         self.entity_ids: set[str | None] = set()
-        self.entries: dict[str, HAKlyqaAccount] = {}
+        self.entries: dict[str, KlyqaAccount] = {}
         self.remove_listeners: list[Callable] = []
         self.entities_area_update: dict[str, set[str]] = {}
+        self.client: api.Client | None = None
+
+    async def init(self) -> None:
+        """Initialize klyqa control data."""
+        self.client = await api.Client.create_lib()
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     """Set up the klyqa component."""
+
     if DOMAIN in hass.data:
         return True
-    hass.data[DOMAIN] = KlyqaData(api.Data_communicator())
-    klyqa: KlyqaData = hass.data[DOMAIN]
 
-    await klyqa.data_communicator.bind_ports()
+    klyqa: KlyqaControl = KlyqaControl()
+    hass.data[DOMAIN] = klyqa
+
+    await klyqa.init()
+
+    #  username = "frederick.stallmeyer@qconnex.com"
+
+    api.set_debug_logger(level=api.TRACE)
+
+    # ctl_data: ControllerData = await ControllerData.create_default(
+    #     interactive_prompts=True,
+    #     # user_account=account,
+    #     offline=False,
+    # )
+
+    # cloud: CloudBackend = CloudBackend.create_default(ctl_data, host)
+
+    # account: Account | None = None
+    # accounts: dict[str, Account] = dict()
+
+    # account = await Account.create_default(
+    #     controller_data,
+    #     cloud=cloud_backend,
+    #     username=username,
+    #     # password=password,
+    #     print_onboarded_devices=print_onboarded_devices,
+    # )
+    # accounts[account.username] = account
+
+    #     ctl_data=ctl_data,
+    #     local=None,
+    #     cloud=cloud,
+    #     accounts=accounts,
+    # )
 
     return True
 
@@ -208,38 +269,43 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up or change Klyqa integration from a config entry."""
 
-    username = str(entry.data.get(CONF_USERNAME))
-    password = str(entry.data.get(CONF_PASSWORD))
+    username: str = str(entry.data.get(CONF_USERNAME))
+    password: str = str(entry.data.get(CONF_PASSWORD))
 
-    klyqa_data: KlyqaData = hass.data[DOMAIN]
+    klyqa: KlyqaControl = hass.data[DOMAIN]
 
-    account: HAKlyqaAccount | None = None
+    acc: KlyqaAccount | None = None
 
-    if entry.entry_id in klyqa_data.entries:
-        account = klyqa_data.entries[entry.entry_id]
-        if account:
-            await hass.async_add_executor_job(account.shutdown)
+    if entry.entry_id in klyqa.entries:
+        acc = klyqa.entries[entry.entry_id]
+        if acc:
+            await hass.async_add_executor_job(acc.shutdown)
 
-            account.username = username
-            account.password = password
-            account.data_communicator = klyqa_data.data_communicator
+            acc.username = username
+            acc.password = password
+            await acc.init()
 
-    else:
-        account = HAKlyqaAccount(
-            hass, klyqa_data.data_communicator, username, password, entry=entry
+    elif klyqa.client:
+        acc = await KlyqaAccount.create_klyqa_acc(
+            klyqa.client, hass, username, password
         )
-        if not hasattr(klyqa_data, "entries"):
-            klyqa_data.entries = {}
-        klyqa_data.entries[entry.entry_id] = account
+        acc.config_entry = entry
 
-    if not account or not await account.login():
+        if not hasattr(klyqa, "entries"):
+            klyqa.entries = {}
+        klyqa.entries[entry.entry_id] = acc
+        klyqa.client.accounts[username] = acc
+
+    if not acc:
         return False
+
+    await acc.login()
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     async def shutdown_klyqa_account(*_: Any) -> None:
-        if account:
-            account.shutdown()
+        if acc:
+            await acc.shutdown()
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, shutdown_klyqa_account)
 
@@ -256,7 +322,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    klyqa_data: KlyqaData = hass.data[DOMAIN]
+    klyqa_data: KlyqaControl = hass.data[DOMAIN]
 
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
@@ -269,7 +335,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if DOMAIN in hass.data:
         if entry.entry_id in klyqa_data.entries:
             if klyqa_data.entries[entry.entry_id]:
-                account: api.Klyqa_account = klyqa_data.entries[entry.entry_id]
+                account: KlyqaAccount = klyqa_data.entries[entry.entry_id]
                 await hass.async_add_executor_job(account.shutdown)
             klyqa_data.entries.pop(entry.entry_id)
 

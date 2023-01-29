@@ -32,7 +32,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import HAKlyqaAccount
+from . import KlyqaAccount
 from .const import DOMAIN, EVENT_KLYQA_NEW_VC, LOGGER
 
 TIMEOUT_SEND = 30
@@ -57,7 +57,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Async_setup_entry."""
-    klyqa: HAKlyqaAccount | None = None
+    klyqa: KlyqaAccount | None = None
 
     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
     if klyqa:
@@ -70,7 +70,7 @@ async def async_setup_klyqa(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
-    klyqa: HAKlyqaAccount,
+    klyqa: KlyqaAccount,
     discovery_info: DiscoveryInfoType | None = None,
     entry: ConfigEntry | None = None,
 ) -> None:
@@ -143,7 +143,7 @@ async def async_setup_klyqa(
 class KlyqaVC(StateVacuumEntity):
     """Representation of the Klyqa vacuum cleaner."""
 
-    _klyqa_api: HAKlyqaAccount
+    _klyqa_api: KlyqaAccount
     _klyqa_device: api.KlyqaVC
     settings: dict[Any, Any] = {}
     """synchronise rooms to HA"""
@@ -161,7 +161,7 @@ class KlyqaVC(StateVacuumEntity):
         self,
         settings: dict[str, Any],
         device: api.KlyqaVC,
-        klyqa_api: HAKlyqaAccount,
+        klyqa_api: KlyqaAccount,
         entity_id: str,
         hass: HomeAssistant,
         should_poll: bool = True,
@@ -223,7 +223,7 @@ class KlyqaVC(StateVacuumEntity):
         if self._klyqa_device.device_config:
             self.device_config = self._klyqa_device.device_config
         else:
-            acc: HAKlyqaAccount = self._klyqa_account
+            acc: KlyqaAccount = self._klyqa_account
             response_object: TypeJSON | None = await acc.request(
                 "/config/product/" + self.settings["productId"],
                 timeout=30,
