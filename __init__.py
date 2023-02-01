@@ -7,8 +7,12 @@ from datetime import timedelta
 from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
-from klyqa_ctl.general.general import Device_config
-from klyqa_ctl.general.general import async_json_cache
+from klyqa_ctl.general.general import (
+    DeviceConfig,
+    DeviceType,
+    format_uid,
+    async_json_cache,
+)
 
 from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
 from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
@@ -74,7 +78,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
     ) -> KlyqaAccount:
         """Factory for an account."""
 
-        acc: KlyqaAccount = KlyqaAccount(client.ctl_data, client.cloud, hass)
+        acc: KlyqaAccount = KlyqaAccount(client, client.cloud, hass)
         acc.username = username
         acc.password = password
         acc.print_onboarded_devices = False
@@ -89,7 +93,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
         """Login."""
         ret: bool = await super().login(print_onboarded_devices=False)
         if ret:
-            await api.async_json_cache(
+            await async_json_cache(
                 {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
                 "last.klyqa_integration_data.cache.json",
             )
@@ -103,105 +107,106 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
 
         await self.process_account_settings(device_type)
 
-    async def process_account_settings(self, device_type: str) -> None:
-        """Process_account_settings."""
-        if self.acc_settings is None:
+    def sync_account_devices_with_ha_entities(self, device_type: str) -> None:
+        if self.settings is None:
             return None
+        entity_registry = ent_reg.async_get(self.hass)
 
-        def sync_account_devices_with_ha_entities(device_type: str) -> None:
-            if self.acc_settings is None:
-                return None
-            entity_registry = ent_reg.async_get(self.hass)
+        for device in self.settings["devices"]:
+            # look if any onboarded device is not in the entity registry already
+            u_id = format_uid(device["localDeviceId"])
 
-            for device in self.acc_settings["devices"]:
-                # look if any onboarded device is not in the entity registry already
-                u_id = api.format_uid(device["localDeviceId"])
+            platform: str = ""
+            entity_id: str = ""
+            event: str = ""
+            if (
+                device_type == DeviceType.LIGHTING.name
+                and device["productId"].find(".lighting") > -1
+            ):
+                platform = Platform.LIGHT
+                entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
+                event = EVENT_KLYQA_NEW_LIGHT
+            elif (
+                device_type == DeviceType.CLEANER.name
+                and device["productId"].find(".cleaning") > -1
+            ):
+                platform = Platform.VACUUM
+                entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
+                event = EVENT_KLYQA_NEW_VC
+            else:
+                continue
+            registered_entity_id = entity_registry.async_get_entity_id(
+                platform, DOMAIN, u_id
+            )
 
-                platform: str = ""
-                entity_id: str = ""
-                event: str = ""
-                if (
-                    device_type == api.DeviceType.lighting.name
-                    and device["productId"].find(".lighting") > -1
-                ):
-                    platform = Platform.LIGHT
-                    entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
-                    event = EVENT_KLYQA_NEW_LIGHT
-                elif (
-                    device_type == api.DeviceType.cleaner.name
-                    and device["productId"].find(".cleaning") > -1
-                ):
-                    platform = Platform.VACUUM
-                    entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
-                    event = EVENT_KLYQA_NEW_VC
-                else:
-                    continue
+            existing = (
+                self.hass.states.get(registered_entity_id)
+                if registered_entity_id
+                else self.hass.states.get(entity_id)
+            )
+            if (
+                not registered_entity_id
+                or not existing
+                or ATTR_RESTORED in existing.attributes
+            ):
+                self.hass.bus.fire(event, {"user": self.username, "data": device})
+
+        if device_type == api.DeviceType.LIGHTING.name:
+            for group in self.settings["deviceGroups"]:
+                u_id = format_uid(group["id"])
+                entity_id = LIGHT_ENTITY_ID_FORMAT.format(slugify(group["id"]))
+
                 registered_entity_id = entity_registry.async_get_entity_id(
-                    platform, DOMAIN, u_id
+                    Platform.LIGHT, DOMAIN, slugify(group["id"])  # u_id
                 )
-
                 existing = (
                     self.hass.states.get(registered_entity_id)
                     if registered_entity_id
                     else self.hass.states.get(entity_id)
                 )
+
                 if (
                     not registered_entity_id
                     or not existing
                     or ATTR_RESTORED in existing.attributes
                 ):
-                    self.hass.bus.fire(event, {"user": self.username, "data": device})
-
-            if device_type == api.DeviceType.lighting.name:
-                for group in self.acc_settings["deviceGroups"]:
-                    u_id = api.format_uid(group["id"])
-                    entity_id = LIGHT_ENTITY_ID_FORMAT.format(slugify(group["id"]))
-
-                    registered_entity_id = entity_registry.async_get_entity_id(
-                        Platform.LIGHT, DOMAIN, slugify(group["id"])  # u_id
-                    )
-                    existing = (
-                        self.hass.states.get(registered_entity_id)
-                        if registered_entity_id
-                        else self.hass.states.get(entity_id)
-                    )
-
+                    # found klyqa device not in the light entities
                     if (
-                        not registered_entity_id
-                        or not existing
-                        or ATTR_RESTORED in existing.attributes
+                        len(group["devices"]) > 0
+                        and "productId" in group["devices"][0]
+                        and group["devices"][0]["productId"].startswith(
+                            "@klyqa.lighting"
+                        )
                     ):
-                        # found klyqa device not in the light entities
-                        if (
-                            len(group["devices"]) > 0
-                            and "productId" in group["devices"][0]
-                            and group["devices"][0]["productId"].startswith(
-                                "@klyqa.lighting"
-                            )
-                        ):
-                            self.hass.bus.fire(
-                                EVENT_KLYQA_NEW_LIGHT_GROUP,
-                                {"user": self.username, "data": group},
-                            )
+                        self.hass.bus.fire(
+                            EVENT_KLYQA_NEW_LIGHT_GROUP,
+                            {"user": self.username, "data": group},
+                        )
+
+    async def process_account_settings(self, device_type: str) -> None:
+        """Process_account_settings."""
+
+        if self.settings is None:
+            return None
 
         klyqa_new_light_registered: list[str]
-        if device_type == api.DeviceType.lighting.name:
+        if device_type == api.DeviceType.LIGHTING.name:
             klyqa_new_light_registered = [
                 key
                 for key, _ in self.hass.bus.async_listeners().items()
                 if key in (EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP)
             ]
             if len(klyqa_new_light_registered) == 2:
-                sync_account_devices_with_ha_entities(device_type)
+                self.sync_account_devices_with_ha_entities(device_type)
 
-        elif device_type == api.DeviceType.cleaner.name:
+        elif device_type == api.DeviceType.CLEANER.name:
             klyqa_new_light_registered = [
                 key
                 for key, _ in self.hass.bus.async_listeners().items()
                 if key == EVENT_KLYQA_NEW_VC
             ]
             if len(klyqa_new_light_registered) == 1:
-                sync_account_devices_with_ha_entities(device_type)
+                self.sync_account_devices_with_ha_entities(device_type)
 
 
 class KlyqaControl:
@@ -209,7 +214,7 @@ class KlyqaControl:
 
     def __init__(self, polling: bool = True) -> None:
         """Initialize the system."""
-        # self.data_communicator: api.Data_communicator = data_communicator
+
         self.polling: bool = polling
         self.entity_ids: set[str | None] = set()
         self.entries: dict[str, KlyqaAccount] = {}
@@ -219,7 +224,7 @@ class KlyqaControl:
 
     async def init(self) -> None:
         """Initialize klyqa control data."""
-        self.client = await api.Client.create_lib()
+        self.client = await api.Client.create_worker()
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
