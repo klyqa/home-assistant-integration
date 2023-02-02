@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 from datetime import timedelta
-from functools import partial
 from typing import Any
 
 import klyqa_ctl as api
@@ -65,7 +64,7 @@ from homeassistant.util.color import (
 )
 
 from . import KlyqaAccount, KlyqaControl
-from .const import DOMAIN, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP, LOGGER
+from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND = 30
 SCAN_INTERVAL = timedelta(seconds=210)
@@ -108,26 +107,13 @@ async def async_setup_klyqa(
 
     entity_registry = er.async_get(hass)
 
-    username: str = acc.username  # entry.data.get(CONF_USERNAME) if entry else ""
-
-    async def add_new_light_group(event: Event) -> None:
-
-        user: str = event.data["user"]
-        if user != username:
-            return
-        device_settings: dict[Any, Any] = event.data["data"]
+    async def add_new_light_group(device_settings: dict) -> None:
 
         entity: KlyqaLightGroup = KlyqaLightGroup(hass, device_settings)
 
         add_entities([entity], True)
 
-    async def add_new_entity(event: Event) -> None:
-
-        user: str = event.data["user"]
-        if user != username:
-            return
-
-        device_settings: dict[str, Any] = event.data["data"]
+    async def add_new_light(device_settings: dict) -> None:
 
         u_id: str = format_uid(device_settings["localDeviceId"])
 
@@ -170,16 +156,11 @@ async def async_setup_klyqa(
         if new_entity:
             add_entities([new_entity], True)
 
-    klyqa_data.remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
-    )
+    acc.add_light_entity = add_new_light
+    acc.add_light_group_entity = add_new_light_group
 
-    klyqa_data.remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT_GROUP, add_new_light_group)
-    )
+    await acc.update_account()
 
-    await acc.update_account(device_type=DeviceType.LIGHTING.name)
-    acc.add_entities_handlers.add(add_new_entity)
     return
 
 
@@ -273,7 +254,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
             #     )
             # )
             response_object: TypeJson | None = await acc.request_beared(
-                ReguestMethod.GET,
+                RequestMethod.GET,
                 "/config/product/" + self.settings["productId"],
                 timeout=30,
             )

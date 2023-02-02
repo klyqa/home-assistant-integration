@@ -46,7 +46,7 @@ from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import KlyqaAccount
-from .const import DOMAIN, EVENT_KLYQA_NEW_VC, LOGGER
+from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND = 30
 SCAN_INTERVAL: timedelta = timedelta(seconds=210)
@@ -76,7 +76,7 @@ async def async_setup_entry(
     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
     if klyqa:
         await async_setup_klyqa(
-            hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
+            hass, ConfigType(entry.data), async_add_entities, entry=entry, acc=klyqa
         )
 
 
@@ -84,7 +84,7 @@ async def async_setup_klyqa(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
-    klyqa: KlyqaAccount,
+    acc: KlyqaAccount,
     discovery_info: DiscoveryInfoType | None = None,
     entry: ConfigEntry | None = None,
 ) -> None:
@@ -93,7 +93,7 @@ async def async_setup_klyqa(
     async def on_hass_stop(event: Event) -> None:
         """Stop push updates when hass stops."""
 
-        await klyqa.shutdown()
+        await acc.shutdown()
         # await hass.async_add_executor_job(klyqa.shutdown)
 
     listener: CALLBACK_TYPE = hass.bus.async_listen_once(
@@ -105,20 +105,14 @@ async def async_setup_klyqa(
 
     entity_registry: EntityRegistry = er.async_get(hass)
 
-    async def add_new_entity(event: Event) -> None:
-
-        user: str = event.data["user"]
-        if user != entry.data.get(CONF_USERNAME):
-            return
-
-        device_settings: dict[str, Any] = event.data["data"]
+    async def add_cleaner_entity(device_settings: dict) -> None:
 
         u_id: str = format_uid(device_settings["localDeviceId"])
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
         device_state: VacuumCleaner = (
-            await klyqa.get_or_create_device(unit_id=u_id)
+            await acc.get_or_create_device(unit_id=u_id)
         ).device
 
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
@@ -136,9 +130,9 @@ async def async_setup_klyqa(
         new_entity: KlyqaVC = KlyqaVC(
             device_settings,
             device_state,
-            klyqa,
+            acc,
             entity_id,
-            should_poll=klyqa.polling,
+            should_poll=acc.polling,
             config_entry=entry,
             hass=hass,
         )
@@ -147,11 +141,9 @@ async def async_setup_klyqa(
         if new_entity:
             add_entities([new_entity], True)
 
-    hass.data[DOMAIN].remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_VC, add_new_entity)
-    )
+    acc.add_cleaner_entity = add_cleaner_entity
 
-    await klyqa.update_account(device_type=DeviceType.CLEANER.name)
+    await acc.update_account()
     return
 
 

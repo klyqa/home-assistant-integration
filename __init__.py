@@ -4,7 +4,7 @@ import asyncio
 
 from collections.abc import Callable
 from datetime import timedelta
-from typing import Any
+from typing import Any, Awaitable
 
 from klyqa_ctl import klyqa_ctl as api
 from klyqa_ctl.general.general import (
@@ -31,9 +31,6 @@ from homeassistant.util import slugify
 
 from .const import (
     DOMAIN,
-    EVENT_KLYQA_NEW_LIGHT,
-    EVENT_KLYQA_NEW_LIGHT_GROUP,
-    EVENT_KLYQA_NEW_VC,
 )
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
@@ -62,11 +59,15 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
         # device_configs={},
     ) -> None:
         """HAKlyqaAccount."""
+
         super().__init__(ctl_data, cloud)
         self.hass = hass
         self.polling = polling
         self.config_entry: ConfigEntry | None = config_entry
-        self.add_entities_handlers: set[Callable] = set()
+
+        self.add_light_entity: Callable[[dict], Awaitable[None]] | None = None
+        self.add_light_group_entity: Callable[[dict], Awaitable[None]] | None = None
+        self.add_cleaner_entity: Callable[[dict], Awaitable[None]] | None = None
 
     @classmethod
     async def create_klyqa_acc(
@@ -99,40 +100,36 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
             )
         return ret
 
-    async def update_account(self, device_type: str) -> None:
+    async def update_account(self) -> None:
         """Update_account."""
 
         # await self.request_account_settings()
         await self.request_account_settings_eco()
 
-        await self.process_account_settings(device_type)
+        await self.sync_account_devices_with_ha_entities()
 
-    def sync_account_devices_with_ha_entities(self, device_type: str) -> None:
+    async def sync_account_devices_with_ha_entities(self) -> None:
+
         if self.settings is None:
             return None
+
         entity_registry = ent_reg.async_get(self.hass)
 
+        add_entity: Callable[[dict], Awaitable] | None = None
         for device in self.settings["devices"]:
             # look if any onboarded device is not in the entity registry already
             u_id = format_uid(device["localDeviceId"])
 
             platform: str = ""
             entity_id: str = ""
-            event: str = ""
-            if (
-                device_type == DeviceType.LIGHTING.name
-                and device["productId"].find(".lighting") > -1
-            ):
+            if self.add_light_entity and device["productId"].find(".lighting") > -1:
                 platform = Platform.LIGHT
                 entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
-                event = EVENT_KLYQA_NEW_LIGHT
-            elif (
-                device_type == DeviceType.CLEANER.name
-                and device["productId"].find(".cleaning") > -1
-            ):
+                add_entity = self.add_light_entity
+            elif self.add_cleaner_entity and device["productId"].find(".cleaning") > -1:
                 platform = Platform.VACUUM
                 entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
-                event = EVENT_KLYQA_NEW_VC
+                add_entity = self.add_cleaner_entity
             else:
                 continue
             registered_entity_id = entity_registry.async_get_entity_id(
@@ -148,10 +145,10 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
                 not registered_entity_id
                 or not existing
                 or ATTR_RESTORED in existing.attributes
-            ):
-                self.hass.bus.fire(event, {"user": self.username, "data": device})
+            ) and add_entity:
+                await add_entity(device)
 
-        if device_type == api.DeviceType.LIGHTING.name:
+        if self.add_light_group_entity:
             for group in self.settings["deviceGroups"]:
                 u_id = format_uid(group["id"])
                 entity_id = LIGHT_ENTITY_ID_FORMAT.format(slugify(group["id"]))
@@ -178,35 +175,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
                             "@klyqa.lighting"
                         )
                     ):
-                        self.hass.bus.fire(
-                            EVENT_KLYQA_NEW_LIGHT_GROUP,
-                            {"user": self.username, "data": group},
-                        )
-
-    async def process_account_settings(self, device_type: str) -> None:
-        """Process_account_settings."""
-
-        if self.settings is None:
-            return None
-
-        klyqa_new_light_registered: list[str]
-        if device_type == api.DeviceType.LIGHTING.name:
-            klyqa_new_light_registered = [
-                key
-                for key, _ in self.hass.bus.async_listeners().items()
-                if key in (EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP)
-            ]
-            if len(klyqa_new_light_registered) == 2:
-                self.sync_account_devices_with_ha_entities(device_type)
-
-        elif device_type == api.DeviceType.CLEANER.name:
-            klyqa_new_light_registered = [
-                key
-                for key, _ in self.hass.bus.async_listeners().items()
-                if key == EVENT_KLYQA_NEW_VC
-            ]
-            if len(klyqa_new_light_registered) == 1:
-                self.sync_account_devices_with_ha_entities(device_type)
+                        await self.add_light_group_entity(group)
 
 
 class KlyqaControl:
