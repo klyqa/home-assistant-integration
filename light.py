@@ -4,14 +4,28 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 from datetime import timedelta
-from functools import partial
 from typing import Any
 
 import klyqa_ctl as api
 from klyqa_ctl.devices.device import Device as KlyqaDevice
 from klyqa_ctl.account import AccountDevice
-from klyqa_ctl.general.general import TypeJson
+from klyqa_ctl.general.general import (
+    TypeJson,
+    format_uid,
+    DeviceType,
+    DeviceConfig,
+    PRODUCT_URLS,
+    RgbColor,
+)
+
+from klyqa_ctl.general.message import (
+    Message,
+    MessageState,
+)
 from klyqa_ctl.devices.light.light import Light as KlyqaLibLight
+from klyqa_ctl.devices.light.scenes import SCENES as BULB_SCENES
+from klyqa_ctl.communication.cloud import RequestMethod
+
 
 from homeassistant.components.group.light import LightGroup
 from homeassistant.components.light import (
@@ -50,7 +64,7 @@ from homeassistant.util.color import (
 )
 
 from . import KlyqaAccount, KlyqaControl
-from .const import DOMAIN, EVENT_KLYQA_NEW_LIGHT, EVENT_KLYQA_NEW_LIGHT_GROUP, LOGGER
+from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND = 30
 SCAN_INTERVAL = timedelta(seconds=210)
@@ -93,38 +107,27 @@ async def async_setup_klyqa(
 
     entity_registry = er.async_get(hass)
 
-    username: str = acc.username  # entry.data.get(CONF_USERNAME) if entry else ""
-
-    async def add_new_light_group(event: Event) -> None:
-
-        user: str = event.data["user"]
-        if user != username:
-            return
-        device_settings: dict[Any, Any] = event.data["data"]
+    async def add_new_light_group(device_settings: dict) -> None:
 
         entity: KlyqaLightGroup = KlyqaLightGroup(hass, device_settings)
 
         add_entities([entity], True)
 
-    async def add_new_entity(event: Event) -> None:
+    async def add_new_light(device_settings: dict) -> None:
 
-        user: str = event.data["user"]
-        if user != username:
-            return
-
-        device_settings: dict[str, Any] = event.data["data"]
-
-        u_id: str = api.format_uid(device_settings["localDeviceId"])
+        u_id: str = format_uid(device_settings["localDeviceId"])
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        device: AccountDevice | KlyqaLibLight = (
-            acc.devices[u_id] if u_id in acc.devices else KlyqaLibLight()
+        acc_device: AccountDevice = (
+            acc.devices[u_id]
+            if u_id in acc.devices
+            else await acc.get_or_create_device(u_id)
         )
 
         # Clear status added from cloud when the bulb is not connected to the cloud so offline
-        if not device.cloud.connected:
-            device.status = None
+        if not acc_device.device.cloud.connected:
+            acc_device.device.status = None
 
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.LIGHT, DOMAIN, u_id
@@ -141,7 +144,7 @@ async def async_setup_klyqa(
 
         new_entity: KlyqaLight = KlyqaLight(
             device_settings,
-            device,
+            acc_device,
             acc,
             entity_id,
             should_poll=acc.polling,
@@ -149,20 +152,15 @@ async def async_setup_klyqa(
             hass=hass,
         )
         await new_entity.async_update_settings()
-        new_entity.update_device_state(device.status)
+        new_entity.update_device_state(acc_device.device.status)
         if new_entity:
             add_entities([new_entity], True)
 
-    klyqa_data.remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT, add_new_entity)
-    )
+    acc.add_light_entity = add_new_light
+    acc.add_light_group_entity = add_new_light_group
 
-    klyqa_data.remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_LIGHT_GROUP, add_new_light_group)
-    )
+    await acc.update_account()
 
-    await acc.update_account(device_type=api.DeviceType.lighting.name)
-    acc.add_entities_handlers.add(add_new_entity)
     return
 
 
@@ -176,14 +174,14 @@ class KlyqaLightGroup(LightGroup):
         self.hass = hass
         self.settings = settings
 
-        u_id = api.format_uid(settings["id"])
+        u_id = format_uid(settings["id"])
 
         self.entity_id = ENTITY_ID_FORMAT.format(slugify(settings["id"]))
 
         entity_ids: list[str] = []
 
         for device in settings["devices"]:
-            uid = api.format_uid(device["localDeviceId"])
+            uid = format_uid(device["localDeviceId"])
 
             entity_ids.append(ENTITY_ID_FORMAT.format(uid))
 
@@ -210,7 +208,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
     def __init__(
         self,
         settings: dict[str, Any],
-        device: api.KlyqaBulb,
+        device: KlyqaLibBulb,
         klyqa_account: KlyqaAccount,
         entity_id: str,
         hass: HomeAssistant,
@@ -221,7 +219,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         self.hass = hass
 
         self._klyqa_account = klyqa_account
-        self.u_id = api.format_uid(settings["localDeviceId"])
+        self.u_id = format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = slugify(self.u_id)
         self._klyqa_device = device
         self.entity_id = entity_id
@@ -235,27 +233,28 @@ class KlyqaLight(RestoreEntity, LightEntity):
         self.config_entry = config_entry
         self.send_event_cb = asyncio.Event()
 
-        self.device_config: api.Device_config = {}
+        self.device_config: DeviceConfig = {}
         self.settings = {}
         self.rooms: list[Any] = []
 
     async def set_device_capabilities(self) -> None:
         """Look up profile."""
         # if self.settings["productId"] in api.device_configs:
-        if self._klyqa_device.device_config:
+        if self._klyqa_device.device.device_config:
             self.device_config = (
-                self._klyqa_device.device_config
+                self._klyqa_device.device.device_config
             )  # api.device_configs[self.settings["productId"]]
         else:
             acc: KlyqaAccount = self._klyqa_account
-            # response_object: TypeJSON | None = await self.hass.async_add_executor_job(
+            # response_object: TypeJson | None = await self.hass.async_add_executor_job(
             #     partial(
             #         acc.request,
             #         "/config/product/" + self.settings["productId"],
             #         timeout=30,
             #     )
             # )
-            response_object: TypeJSON | None = await acc.request(
+            response_object: TypeJson | None = await acc.request_beared(
+                RequestMethod.GET,
                 "/config/product/" + self.settings["productId"],
                 timeout=30,
             )
@@ -282,21 +281,21 @@ class KlyqaLight(RestoreEntity, LightEntity):
             if [x for x in device_traits if "msg_key" in x and x["msg_key"] == "color"]:
                 self._attr_supported_color_modes.add(ColorMode.RGB)
                 self._attr_supported_features |= LightEntityFeature.EFFECT  # type: ignore[assignment]
-                self._attr_effect_list = [x["label"] for x in api.BULB_SCENES]
+                self._attr_effect_list = [x["label"] for x in BULB_SCENES]
             else:
                 self._attr_effect_list = [
-                    x["label"] for x in api.BULB_SCENES if "cwww" in x
+                    x["label"] for x in BULB_SCENES if "cwww" in x
                 ]
 
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
 
-        if self._klyqa_account.acc_settings is None:
+        if self._klyqa_account.settings is None:
             return
 
         devices_settings: Any | None = (
-            self._klyqa_account.acc_settings["devices"]
-            if "devices" in self._klyqa_account.acc_settings
+            self._klyqa_account.settings["devices"]
+            if "devices" in self._klyqa_account.settings
             else None
         )
 
@@ -306,7 +305,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         device_result = [
             x
             for x in devices_settings
-            if api.format_uid(str(x["localDeviceId"])) == self.u_id
+            if format_uid(str(x["localDeviceId"])) == self.u_id
         ]
         if len(device_result) < 1:
             return
@@ -315,7 +314,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         await self.set_device_capabilities()
 
         self._attr_name = self.settings["name"]
-        self._attr_unique_id = api.format_uid(self.settings["localDeviceId"])
+        self._attr_unique_id = format_uid(self.settings["localDeviceId"])
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._attr_unique_id)},
             name=self.name,
@@ -328,9 +327,9 @@ class KlyqaLight(RestoreEntity, LightEntity):
         if (
             self.device_config
             and "productId" in self.device_config
-            and self.device_config["productId"] in api.PRODUCT_URLS
+            and self.device_config["productId"] in PRODUCT_URLS
         ):
-            self._attr_device_info["configuration_url"] = api.PRODUCT_URLS[
+            self._attr_device_info["configuration_url"] = PRODUCT_URLS[
                 self.device_config["productId"]
             ]
 
@@ -361,7 +360,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         self.rooms = []
         for room in self._klyqa_account.acc_settings["rooms"]:
             for dev in room["devices"]:
-                if dev and api.format_uid(dev["localDeviceId"]) == self.u_id:
+                if dev and format_uid(dev["localDeviceId"]) == self.u_id:
                     self.rooms.append(room)
 
         if (
@@ -444,9 +443,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
             )
 
         if ATTR_EFFECT in kwargs:
-            scene_result = [
-                x for x in api.BULB_SCENES if x["label"] == kwargs[ATTR_EFFECT]
-            ]
+            scene_result = [x for x in BULB_SCENES if x["label"] == kwargs[ATTR_EFFECT]]
             if len(scene_result) > 0:
                 scene = scene_result[0]
                 self._attr_effect = kwargs[ATTR_EFFECT]
@@ -456,11 +453,11 @@ class KlyqaLight(RestoreEntity, LightEntity):
 
                 send_event_cb: asyncio.Event = asyncio.Event()
 
-                async def callback(msg: api.Message, uid: str) -> None:
+                async def callback(msg: Message, uid: str) -> None:
                     nonlocal args, self
                     if msg.state in (
-                        api.Message_state.sent,
-                        api.Message_state.answered,
+                        MessageState.SENT,
+                        MessageState.ANSWERED,
                     ):
                         send_event_cb.set()
                         args.extend(
@@ -572,7 +569,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
 
         if self._added_klyqa:
             await self._klyqa_account.process_account_settings(
-                device_type=api.DeviceType.lighting.name
+                device_type=DeviceType.LIGHTING.name
             )
         await self.async_update_settings()
 
@@ -597,7 +594,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
     ) -> None:
         """Send_to_bulbs."""
 
-        async def send_answer_cb(msg: api.Message, uid: str) -> None:
+        async def send_answer_cb(msg: Message, uid: str) -> None:
             nonlocal callback
             if callback is not None:
                 await callback(msg, uid)
@@ -615,9 +612,9 @@ class KlyqaLight(RestoreEntity, LightEntity):
         parser = api.get_description_parser()
         args.extend(["--debug", "--local", "--device_unitids", f"{self.u_id}"])
 
-        args.insert(0, api.DeviceType.lighting.name)
-        api.add_config_args(parser=parser)
-        api.add_command_args_bulb(parser=parser)
+        args.insert(0, DeviceType.LIGHTING.name)
+        add_config_args(parser=parser)
+        add_command_args_bulb(parser=parser)
 
         args_parsed = parser.parse_args(args=args)
 
@@ -671,7 +668,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
             if state_complete.temperature
             else 0
         )
-        if isinstance(state_complete.color, api.RGBColor):
+        if isinstance(state_complete.color, RgbColor):
             self._attr_rgb_color = (
                 int(state_complete.color.r),
                 int(state_complete.color.g),
@@ -699,9 +696,7 @@ class KlyqaLight(RestoreEntity, LightEntity):
         self._attr_effect = ""
         if state_complete.mode == "cmd":
             scene_result = [
-                x
-                for x in api.BULB_SCENES
-                if str(x["id"]) == state_complete.active_scene
+                x for x in BULB_SCENES if str(x["id"]) == state_complete.active_scene
             ]
             if len(scene_result) > 0:
                 self._attr_effect = scene_result[0]["label"]

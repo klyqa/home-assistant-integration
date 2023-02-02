@@ -5,6 +5,10 @@ import asyncio
 from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
+from klyqa_ctl.account import Account
+from klyqa_ctl.klyqa_ctl import Client
+from klyqa_ctl.controller_data import ControllerData
+
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
 
@@ -64,20 +68,20 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle login with Klyqa."""
         errors = {}
-        klyqa: api.Klyqa_account | None = None
+        acc: Account | None = None
         try:
+            client: Client = await Client.create_worker()
 
-            klyqa = api.Klyqa_account(None, username, password)
+            # login = self.hass.async_run_job(
+            #     acc.login,
+            # )
+            # if login:
+            acc = await client.add_account(username, password)
+            # await asyncio.wait_for(login, timeout=30)
+            # else:
+            #     raise Exception()
 
-            login = self.hass.async_run_job(
-                klyqa.login,
-            )
-            if login:
-                await asyncio.wait_for(login, timeout=30)
-            else:
-                raise Exception()
-
-            if not klyqa or not klyqa.access_token or not login:
+            if not acc or not acc.access_token:
                 raise ValueError()
 
         except (ConnectTimeout, HTTPError, ValueError) as exception:

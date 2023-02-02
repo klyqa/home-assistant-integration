@@ -8,9 +8,22 @@ from datetime import timedelta
 from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
-from klyqa_ctl.devices.device import format_uid
-from klyqa_ctl.devices.vacuum import KlyqaVCResponseStatus
-from klyqa_ctl.general.general import TypeJSON
+from klyqa_ctl.general.general import format_uid, DeviceConfig
+from klyqa_ctl.devices.vacuum.response_status import ResponseStatus
+from klyqa_ctl.devices.vacuum.vacuum import VacuumCleaner
+
+from klyqa_ctl.devices.vacuum.general import (
+    VcSuctionStrengths,
+    VcWorkingStatus,
+    VcWorkingMode,
+)
+from klyqa_ctl.general.parameters import (
+    add_config_args,
+    get_description_parser,
+)
+from klyqa_ctl.general.general import TypeJson, DeviceConfig, PRODUCT_URLS, DeviceType
+from klyqa_ctl.communication.cloud import RequestMethod
+
 
 from homeassistant.components.vacuum import (
     ENTITY_ID_FORMAT,
@@ -33,7 +46,7 @@ from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import KlyqaAccount
-from .const import DOMAIN, EVENT_KLYQA_NEW_VC, LOGGER
+from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND = 30
 SCAN_INTERVAL: timedelta = timedelta(seconds=210)
@@ -57,12 +70,13 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Async_setup_entry."""
+
     klyqa: KlyqaAccount | None = None
 
     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
     if klyqa:
         await async_setup_klyqa(
-            hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
+            hass, ConfigType(entry.data), async_add_entities, entry=entry, acc=klyqa
         )
 
 
@@ -70,7 +84,7 @@ async def async_setup_klyqa(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
-    klyqa: KlyqaAccount,
+    acc: KlyqaAccount,
     discovery_info: DiscoveryInfoType | None = None,
     entry: ConfigEntry | None = None,
 ) -> None:
@@ -78,8 +92,9 @@ async def async_setup_klyqa(
 
     async def on_hass_stop(event: Event) -> None:
         """Stop push updates when hass stops."""
-        await klyqa.search_and_send_loop_task_stop()
-        await hass.async_add_executor_job(klyqa.shutdown)
+
+        await acc.shutdown()
+        # await hass.async_add_executor_job(klyqa.shutdown)
 
     listener: CALLBACK_TYPE = hass.bus.async_listen_once(
         EVENT_HOMEASSISTANT_STOP, on_hass_stop
@@ -90,21 +105,15 @@ async def async_setup_klyqa(
 
     entity_registry: EntityRegistry = er.async_get(hass)
 
-    async def add_new_entity(event: Event) -> None:
-
-        user: str = event.data["user"]
-        if user != entry.data.get(CONF_USERNAME):
-            return
-
-        device_settings: dict[str, Any] = event.data["data"]
+    async def add_cleaner_entity(device_settings: dict) -> None:
 
         u_id: str = format_uid(device_settings["localDeviceId"])
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
-        device_state: api.KlyqaVC = (
-            klyqa.devices[u_id] if u_id in klyqa.devices else api.KlyqaVC()
-        )
+        device_state: VacuumCleaner = (
+            await acc.get_or_create_device(unit_id=u_id)
+        ).device
 
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, u_id
@@ -121,9 +130,9 @@ async def async_setup_klyqa(
         new_entity: KlyqaVC = KlyqaVC(
             device_settings,
             device_state,
-            klyqa,
+            acc,
             entity_id,
-            should_poll=klyqa.polling,
+            should_poll=acc.polling,
             config_entry=entry,
             hass=hass,
         )
@@ -132,11 +141,9 @@ async def async_setup_klyqa(
         if new_entity:
             add_entities([new_entity], True)
 
-    hass.data[DOMAIN].remove_listeners.append(
-        hass.bus.async_listen(EVENT_KLYQA_NEW_VC, add_new_entity)
-    )
+    acc.add_cleaner_entity = add_cleaner_entity
 
-    await klyqa.update_account(device_type=api.DeviceType.cleaner.name)
+    await acc.update_account()
     return
 
 
@@ -144,7 +151,7 @@ class KlyqaVC(StateVacuumEntity):
     """Representation of the Klyqa vacuum cleaner."""
 
     _klyqa_api: KlyqaAccount
-    _klyqa_device: api.KlyqaVC
+    _klyqa_device: VacuumCleaner
     settings: dict[Any, Any] = {}
     """synchronise rooms to HA"""
 
@@ -160,7 +167,7 @@ class KlyqaVC(StateVacuumEntity):
     def __init__(
         self,
         settings: dict[str, Any],
-        device: api.KlyqaVC,
+        device: VacuumCleaner,
         klyqa_api: KlyqaAccount,
         entity_id: str,
         hass: HomeAssistant,
@@ -184,19 +191,19 @@ class KlyqaVC(StateVacuumEntity):
         self.config_entry = config_entry
         self.send_event_cb = asyncio.Event()
 
-        self.device_config: api.Device_config = {}
+        self.device_config: DeviceConfig = {}
         self.settings = {}
 
         self._attr_fan_speed_list = [
-            api.VC_SUCTION_STRENGTHS.NULL.name,
-            api.VC_SUCTION_STRENGTHS.SMALL.name,
-            api.VC_SUCTION_STRENGTHS.NORMAL.name,
-            api.VC_SUCTION_STRENGTHS.STRONG.name,
-            api.VC_SUCTION_STRENGTHS.MAX.name,
+            VcSuctionStrengths.NULL.name,
+            VcSuctionStrengths.SMALL.name,
+            VcSuctionStrengths.NORMAL.name,
+            VcSuctionStrengths.STRONG.name,
+            VcSuctionStrengths.MAX.name,
         ]
         self._state = None
         self._attr_battery_level = 0
-        self.state_complete: KlyqaVCResponseStatus | None = None
+        self.state_complete: ResponseStatus | None = None
 
     async def async_stop(self, **kwargs: Any) -> None:
         """Stop the vacuum cleaner, do not return to base."""
@@ -216,15 +223,16 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
 
-        if self._klyqa_account.acc_settings is None:
+        if self._klyqa_account.settings is None:
             return
 
-        """Look up profile."""
+        # Look up profile.
         if self._klyqa_device.device_config:
             self.device_config = self._klyqa_device.device_config
         else:
             acc: KlyqaAccount = self._klyqa_account
-            response_object: TypeJSON | None = await acc.request(
+            response_object: TypeJson | None = await acc.request_beared(
+                RequestMethod.GET,
                 "/config/product/" + self.settings["productId"],
                 timeout=30,
             )
@@ -232,8 +240,8 @@ class KlyqaVC(StateVacuumEntity):
                 self.device_config = response_object
 
         devices_settings: Any | None = (
-            self._klyqa_account.acc_settings["devices"]
-            if "devices" in self._klyqa_account.acc_settings
+            self._klyqa_account.settings["devices"]
+            if "devices" in self._klyqa_account.settings
             else None
         )
 
@@ -263,9 +271,9 @@ class KlyqaVC(StateVacuumEntity):
         if (
             self.device_config
             and "productId" in self.device_config
-            and self.device_config["productId"] in api.PRODUCT_URLS
+            and self.device_config["productId"] in PRODUCT_URLS
         ):
-            self._attr_device_info["configuration_url"] = api.PRODUCT_URLS[
+            self._attr_device_info["configuration_url"] = PRODUCT_URLS[
                 self.device_config["productId"]
             ]
 
@@ -309,7 +317,7 @@ class KlyqaVC(StateVacuumEntity):
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_account.request_account_settings()  # _settings_eco()
+        await self._klyqa_account.request_account_settings_eco()
         if self._added_klyqa:
             await self._klyqa_account.process_account_settings(device_type="vacuum")
         await self.async_update_settings()
@@ -325,16 +333,18 @@ class KlyqaVC(StateVacuumEntity):
         await self.send_to_devices(["get", "--all"])
 
         if self.u_id in self._klyqa_account.devices:
-            self.update_device_state(self._klyqa_account.devices[self.u_id].status)
+            self.update_device_state(
+                self._klyqa_account.devices[self.u_id].device.status
+            )
 
     async def async_locate(self, **kwargs: Any) -> None:
         """Locate the vacuum cleaner."""
         if self.u_id not in self._klyqa_account.devices:
             return
         set_to: str = "on"
-        status: KlyqaVCResponseStatus | None = self._klyqa_account.devices[
+        status: ResponseStatus | None = self._klyqa_account.devices[
             self.u_id
-        ].status
+        ].device.status
         if status is not None and status.beeping == "on":
             # if self.state_complete and self.state_complete["beeping"] == "on":
             set_to = "off"
@@ -386,7 +396,7 @@ class KlyqaVC(StateVacuumEntity):
 
         parser: argparse.ArgumentParser = api.get_description_parser()
         args = ["--local", "--device_unitids", f"{self.u_id}"] + args
-        args.insert(0, api.DeviceType.cleaner.name)
+        args.insert(0, DeviceType.CLEANER.name)
         api.add_config_args(parser=parser)
         api.add_command_args_cleaner(parser=parser)
 
@@ -414,13 +424,11 @@ class KlyqaVC(StateVacuumEntity):
         self.schedule_update_ha_state()
         await self.async_update_settings()
 
-    def update_device_state(self, state_complete: api.KlyqaVCResponseStatus) -> None:
+    def update_device_state(self, state_complete: ResponseStatus) -> None:
         """Process state request response from the device to the entity state."""
         self._attr_assumed_state = True
 
-        if not state_complete or not isinstance(
-            state_complete, api.KlyqaVCResponseStatus
-        ):
+        if not state_complete or not isinstance(state_complete, ResponseStatus):
             return
 
         LOGGER.debug(
@@ -468,7 +476,7 @@ class KlyqaVC(StateVacuumEntity):
             else None
         )
         speed_name: str | None = (
-            list(api.VC_SUCTION_STRENGTHS)[state_complete.suction - 1].name
+            list(VcSuctionStrengths)[state_complete.suction - 1].name
             if state_complete.suction is not None
             else None
         )
