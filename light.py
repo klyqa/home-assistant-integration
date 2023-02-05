@@ -7,36 +7,31 @@ from datetime import timedelta
 from typing import Any
 
 import klyqa_ctl as api
+from klyqa_ctl.account import AccountDevice
+from klyqa_ctl.communication.cloud import RequestMethod
 from klyqa_ctl.devices.device import Device as KlyqaDevice
 from klyqa_ctl.devices.light.commands import (
-    RequestCommand,
-    PowerCommand,
-    ColorCommand,
-    TemperatureCommand,
     BrightnessCommand,
+    ColorCommand,
+    PowerCommand,
+    RequestCommand,
     RoutinePutCommand,
+    TemperatureCommand,
     TransitionCommand,
 )
+from klyqa_ctl.devices.light.light import Light as KlyqaLight
 from klyqa_ctl.devices.light.response_status import ResponseStatus
-from klyqa_ctl.account import AccountDevice
+from klyqa_ctl.devices.light.scenes import SCENES as BULB_SCENES
 from klyqa_ctl.general.general import (
+    PRODUCT_URLS,
+    Command,
+    DeviceConfig,
+    DeviceType,
+    RgbColor,
     TypeJson,
     format_uid,
-    DeviceType,
-    DeviceConfig,
-    PRODUCT_URLS,
-    RgbColor,
-    Command,
 )
-
-from klyqa_ctl.general.message import (
-    Message,
-    MessageState,
-)
-from klyqa_ctl.devices.light.light import Light as KlyqaLight
-from klyqa_ctl.devices.light.scenes import SCENES as BULB_SCENES
-from klyqa_ctl.communication.cloud import RequestMethod
-
+from klyqa_ctl.general.message import Message, MessageState
 
 from homeassistant.components.group.light import LightGroup
 from homeassistant.components.light import (
@@ -163,7 +158,7 @@ async def async_setup_klyqa(
             hass=hass,
         )
         await new_entity.async_update_settings()
-        new_entity.update_device_state(acc_device.device.status)
+        new_entity.update_device_state(acc_device.device.status)  # type: ignore
         if new_entity:
             add_entities([new_entity], True)
 
@@ -233,7 +228,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         self.u_id = format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = slugify(self.u_id)
         self._acc_device: AccountDevice = acc_device
-        self._klyqa_device = acc_device.device
+        self._klyqa_device = acc_device.device  # type: ignore
         self.entity_id = entity_id
 
         self._attr_should_poll = should_poll
@@ -592,7 +587,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         await self._klyqa_device.send_msg_local([command])
 
         if self.u_id in self._klyqa_account.devices:
-            self.update_device_state(self._klyqa_device.status)
+            self.update_device_state(self._klyqa_device.status)  # type: ignore
             if self._added_klyqa:
                 self.schedule_update_ha_state()
 
@@ -631,11 +626,11 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         LOGGER.info("Update bulb %s%s", self.entity_id, name)
 
         await self.async_update_klyqa()
+        # await self.send(RequestCommand())
 
         # if self._added_klyqa:
         # await self.send_to_bulbs(["--request"])
         # await self._klyqa_device.send_msg_local([RequestCommand()])
-        await self.send(RequestCommand())
 
         # if self.u_id in self._klyqa_account.devices and self._klyqa_device.status:
         #     self.update_device_state(self._klyqa_device.status)
