@@ -4,12 +4,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 from datetime import timedelta
+import traceback
 from typing import Any
 
-import klyqa_ctl as api
 from klyqa_ctl.account import AccountDevice
-from klyqa_ctl.communication.cloud import RequestMethod
-from klyqa_ctl.devices.device import Device as KlyqaDevice
 from klyqa_ctl.devices.light.commands import (
     BrightnessCommand,
     ColorCommand,
@@ -18,7 +16,6 @@ from klyqa_ctl.devices.light.commands import (
     RoutinePutCommand,
     RoutineStartCommand,
     TemperatureCommand,
-    TransitionCommand,
 )
 from klyqa_ctl.devices.light.light import Light as KlyqaLight
 from klyqa_ctl.devices.light.response_status import ResponseStatus
@@ -27,13 +24,11 @@ from klyqa_ctl.general.general import (
     PRODUCT_URLS,
     Command,
     DeviceConfig,
-    DeviceType,
     Range,
     RgbColor,
     TypeJson,
     format_uid,
 )
-from klyqa_ctl.general.message import Message, MessageState
 
 from homeassistant.components.group.light import LightGroup
 from homeassistant.components.light import (
@@ -43,7 +38,6 @@ from homeassistant.components.light import (
     ATTR_EFFECT,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
-    ATTR_RGBWW_COLOR,
     ATTR_TRANSITION,
     ENTITY_ID_FORMAT,
     ColorMode,
@@ -75,7 +69,7 @@ from . import KlyqaAccount, KlyqaControl
 from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND: int = 30
-SCAN_INTERVAL: timedelta = timedelta(seconds=210)
+SCAN_INTERVAL: timedelta = timedelta(minutes=5)
 
 SUPPORT_KLYQA: LightEntityFeature = LightEntityFeature.TRANSITION
 
@@ -107,8 +101,6 @@ async def async_setup_klyqa(
     entry: ConfigEntry | None = None,
 ) -> None:
     """Set up the Klyqa Light platform."""
-
-    klyqa_data: KlyqaControl = hass.data[DOMAIN]
 
     async def on_hass_stop(event: Event) -> None:
         """Stop push updates when hass stops."""
@@ -216,13 +208,13 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
     _attr_supported_features: LightEntityFeature = SUPPORT_KLYQA
     _attr_transition_time: int = 500
 
-    _klyqa_account: KlyqaAccount
-    _klyqa_device: KlyqaLight
+    _kq_acc: KlyqaAccount
+    _kq_device: KlyqaLight
     settings: dict[Any, Any] = {}
     config_entry: ConfigEntry | None = None
     entity_registry: EntityRegistry | None = None
     # entity added finished
-    _added_klyqa: bool = False
+    _added_to_hass: bool = False
     u_id: str
     send_event_cb: asyncio.Event
     hass: HomeAssistant
@@ -240,11 +232,11 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         """Initialize a Klyqa Light Bulb."""
         self.hass = hass
 
-        self._klyqa_account = acc
+        self._kq_acc = acc
         self.u_id = format_uid(settings["localDeviceId"])
         self._attr_unique_id: str = slugify(self.u_id)
-        self._acc_device: AccountDevice = acc_device
-        self._klyqa_device = acc_device.device  # type: ignore
+        self._kq_acc_dev: AccountDevice = acc_device
+        self._kq_device = acc_device.device  # type: ignore
         self.entity_id = entity_id
 
         self._attr_should_poll = should_poll
@@ -257,23 +249,22 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         self.send_event_cb = asyncio.Event()
 
         self.device_config: DeviceConfig = {}
-        self.settings = acc_device.device.acc_settings
         self.rooms: list[Any] = []
 
     async def set_device_capabilities(self) -> None:
         """Look up profile."""
 
-        if self._klyqa_device.device_config:
-            self.device_config = self._klyqa_device.device_config
+        if self._kq_device.device_config:
+            self.device_config = self._kq_device.device_config
         else:
-            acc: KlyqaAccount = self._klyqa_account
-            response_object: TypeJson | None = await acc.request_beared(
-                RequestMethod.GET,
-                "/config/product/" + self.settings["productId"],
-                timeout=30,
-            )
-            if response_object is not None:
-                self.device_config = response_object
+            try:
+                acc: KlyqaAccount = self._kq_acc
+                acc.cloud.get_device_configs(set(self._kq_device.product_id))
+                self.device_config = self._kq_device.device_config
+            except:  # pylint: disable=bare-except # noqa: E722
+                # If we don't get a reply, the config can come from the
+                # device configs cache (in offline mode)
+                LOGGER.debug(traceback.format_exc())
 
         if not self.device_config:
             return
@@ -283,7 +274,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
             and "deviceTraits" in self.device_config
             and (device_traits := self.device_config["deviceTraits"])
         ):
-            temp_range: Range = self._klyqa_device.temperature_range
+            temp_range: Range = self._kq_device.temperature_range
             if [
                 x
                 for x in device_traits
@@ -313,19 +304,20 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
 
-        if self._klyqa_account.settings is None:
+        if self._kq_acc.settings is None:
             return
+        settings: TypeJson = self._kq_acc_dev.acc_settings
         self.hass.loop.create_task(self.set_device_capabilities())
 
-        self._attr_name = self.settings["name"]
-        self._attr_unique_id = format_uid(self.settings["localDeviceId"])
+        self._attr_name = settings["name"]
+        self._attr_unique_id = format_uid(settings["localDeviceId"])
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._attr_unique_id)},
             name=self.name,
             manufacturer="QConnex GmbH",
-            model=self.settings["productId"],
-            sw_version=self.settings["firmwareVersion"],
-            hw_version=self.settings["hardwareRevision"],
+            model=settings["productId"],
+            sw_version=settings["firmwareVersion"],
+            hw_version=settings["hardwareRevision"],
         )
 
         if (
@@ -365,7 +357,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
 
         self.rooms = []
         room: TypeJson
-        for room in self._klyqa_account.settings["rooms"]:
+        for room in self._kq_acc.settings["rooms"]:
             for dev in room["devices"]:
                 if dev and format_uid(dev["localDeviceId"]) == self.u_id:
                     self.rooms.append(room)
@@ -425,7 +417,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Instruct the light to turn off."""
-        await self.hass.async_create_task(self._klyqa_account.update_account())
+        await self.hass.async_create_task(self._kq_acc.update_account())
 
         command: Command | None = None
 
@@ -489,59 +481,44 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
             " (" + self.name + ")" if self.name else "",
             command.msg_str(),
         )
-        await self._klyqa_device.send_msg_local([command])
+        await self._kq_device.send_msg_local([command])
 
-        if self.u_id in self._klyqa_account.devices:
-            self.update_device_state(self._klyqa_device.status)  # type: ignore
-            if self._added_klyqa:
+        if self.u_id in self._kq_acc.devices:
+            self.update_device_state(self._kq_device.status)  # type: ignore
+            if self._added_to_hass:
                 self.schedule_update_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Instruct the light to turn off."""
 
-        command: Command = PowerCommand(status="off")
-
-        LOGGER.info(
-            "Send to bulb %s%s: %s",
-            {self.entity_id},
-            f" ({self.name})" if self.name else "",
-            command.msg_str(),
-        )
-        await self.send(command)
+        await self.send(PowerCommand(status="off"))
 
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
 
-        await self._klyqa_account.request_account_settings_eco()
+        await self._kq_acc.request_account_settings_eco()
 
-        if self._added_klyqa:
-            await self._klyqa_account.update_account()
+        if self._added_to_hass:
+            await self._kq_acc.update_account()
         await self.async_update_settings()
 
     async def async_update(self) -> None:
         """Fetch new state data for this light. Called by HA."""
 
-        name = f" ({self.name})" if self.name else ""
+        name: str = f" ({self.name})" if self.name else ""
         LOGGER.info("Update bulb %s%s", self.entity_id, name)
 
         await self.async_update_klyqa()
-        # if self._added_klyqa:
-        #     await self.send(RequestCommand())
-
-        # if self._added_klyqa:
-        # await self.send_to_bulbs(["--request"])
-        # await self._klyqa_device.send_msg_local([RequestCommand()])
-
-        # if self.u_id in self._klyqa_account.devices and self._klyqa_device.status:
-        #     self.update_device_state(self._klyqa_device.status)
+        if self._added_to_hass:
+            await self.send(RequestCommand())
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""
         await super().async_added_to_hass()
-        self._added_klyqa = True
-        self.schedule_update_ha_state()
+        self._added_to_hass = True
 
         await self.async_update_settings()
+        self.schedule_update_ha_state()
 
     def update_device_state(
         self, state_complete: ResponseStatus | None
@@ -564,7 +541,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity):
         if not state_type or state_type != "status":
             return
 
-        self._klyqa_device.status = state_complete  # should be out
+        self._kq_device.status = state_complete
 
         self._attr_color_temp = (
             color_temperature_kelvin_to_mired(
