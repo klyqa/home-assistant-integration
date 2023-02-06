@@ -13,14 +13,14 @@ from klyqa_ctl.general.general import (
     TRACE,
     DeviceConfig,
     DeviceType,
+    TypeJson,
     async_json_cache,
     format_uid,
     set_debug_logger,
 )
 from klyqa_ctl.klyqa_ctl import Client
 
-from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
-from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
+from homeassistant.components.light import ENTITY_ID_FORMAT
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_RESTORED,
@@ -29,10 +29,9 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as ent_reg
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import slugify
 
 from .const import DOMAIN
 
@@ -54,12 +53,8 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         ctl_data: ControllerData,
         cloud: CloudBackend | None,
         hass: HomeAssistant,
-        # data_communicator: api.Data_communicator,
-        # username: str = "",
-        # password: str = "",
         polling: bool = True,
         config_entry: ConfigEntry | None = None,
-        # device_configs={},
     ) -> None:
         """HAKlyqaAccount."""
 
@@ -69,8 +64,12 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         self.config_entry: ConfigEntry | None = config_entry
 
         self.add_light_entity: Callable[[dict], Awaitable[None]] | None = None
-        self.add_light_group_entity: Callable[[dict], Awaitable[None]] | None = None
-        self.add_cleaner_entity: Callable[[dict], Awaitable[None]] | None = None
+        self.add_light_group_entity: Callable[
+            [dict], Awaitable[None]
+        ] | None = None
+        self.add_cleaner_entity: Callable[
+            [dict], Awaitable[None]
+        ] | None = None
 
     @classmethod
     async def create_klyqa_acc(
@@ -80,18 +79,25 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         username: str = "",
         password: str = "",
     ) -> KlyqaAccount:
-        """Factory for an account."""
+        """Factory for a Klyqa user account."""
 
         acc: KlyqaAccount = KlyqaAccount(client, client.cloud, hass)
-        acc.username = username
-        acc.password = password
+        acc.username = (  # pylint: disable=attribute-defined-outside-init
+            username
+        )
+        acc.password = (  # pylint: disable=attribute-defined-outside-init
+            password
+        )
 
-        acc._attr_settings_lock = asyncio.Lock()
+        acc._attr_settings_lock = (  # pylint: disable=attribute-defined-outside-init
+            asyncio.Lock()
+        )
         await acc.init()
         return acc
 
     async def login(self) -> bool:
-        """Login."""
+        """Login the user account."""
+
         ret: bool = await super().login()
         if ret:
             await async_json_cache(
@@ -101,83 +107,99 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         return ret
 
     async def update_account(self) -> None:
-        """Update_account."""
+        """Update the user account."""
 
-        # await self.request_account_settings()
         await self.request_account_settings_eco()
 
         await self.sync_account_devices_with_ha_entities()
 
+    async def is_entity_registered(self, uid: str, platform: str) -> bool:
+        """Check if entity is already registered in Home Assistant."""
+
+        entity_registry: ent_reg.EntityRegistry = ent_reg.async_get(self.hass)
+        entity_id: str = ENTITY_ID_FORMAT.format(uid)
+
+        registered_entity_id: str | None = entity_registry.async_get_entity_id(
+            platform, DOMAIN, uid
+        )
+
+        existing: State | None = (
+            self.hass.states.get(registered_entity_id)
+            if registered_entity_id
+            else self.hass.states.get(entity_id)
+        )
+
+        if (
+            not registered_entity_id
+            or not existing
+            or ATTR_RESTORED in existing.attributes
+        ):
+            return False
+
+        return True
+
+    async def sync_account_device(self, device: TypeJson) -> None:
+        """Synchronize account device with Home Assistant."""
+
+        add_entity: Callable[[dict], Awaitable[None]] | None = None
+
+        u_id: str = format_uid(device["localDeviceId"])
+
+        platform: str = ""
+        if (
+            self.add_light_entity
+            and device["productId"].find(".lighting") > -1
+        ):
+            platform = Platform.LIGHT
+            add_entity = self.add_light_entity
+        elif (
+            self.add_cleaner_entity
+            and device["productId"].find(".cleaning") > -1
+        ):
+            platform = Platform.VACUUM
+            add_entity = self.add_cleaner_entity
+        else:
+            return
+
+        if await self.is_entity_registered(u_id, platform):
+            return
+
+        if add_entity:
+            await add_entity(device)  # pylint: disable=not-callable
+
+    async def sync_account_group(self, group: TypeJson) -> None:
+        """Synchronize account device group with Home Assistant."""
+
+        u_id: str = format_uid(group["id"])
+
+        if await self.is_entity_registered(u_id, Platform.LIGHT):
+            return
+
+        if self.add_light_group_entity:
+            # found klyqa device not in the light entities
+            if (
+                len(group["devices"]) > 0
+                and "productId" in group["devices"][0]
+                and group["devices"][0]["productId"].startswith(
+                    "@klyqa.lighting"
+                )
+            ):
+                await self.add_light_group_entity(  # pylint: disable=not-callable
+                    group
+                )
+
     async def sync_account_devices_with_ha_entities(self) -> None:
+        """Synchronize account devices with Home Assistant."""
 
         if self.settings is None:
             return None
 
-        entity_registry = ent_reg.async_get(self.hass)
-
-        add_entity: Callable[[dict], Awaitable[None]] | None = None
         for device in self.settings["devices"]:
-            # look if any onboarded device is not in the entity registry already
-            u_id = format_uid(device["localDeviceId"])
-
-            platform: str = ""
-            entity_id: str = ""
-            if self.add_light_entity and device["productId"].find(".lighting") > -1:
-                platform = Platform.LIGHT
-                entity_id = LIGHT_ENTITY_ID_FORMAT.format(u_id)
-                add_entity = self.add_light_entity
-            elif self.add_cleaner_entity and device["productId"].find(".cleaning") > -1:
-                platform = Platform.VACUUM
-                entity_id = VACUUM_ENTITY_ID_FORMAT.format(u_id)
-                add_entity = self.add_cleaner_entity
-            else:
-                continue
-            registered_entity_id = entity_registry.async_get_entity_id(
-                platform, DOMAIN, u_id
-            )
-
-            existing = (
-                self.hass.states.get(registered_entity_id)
-                if registered_entity_id
-                else self.hass.states.get(entity_id)
-            )
-            if (
-                not registered_entity_id
-                or not existing
-                or ATTR_RESTORED in existing.attributes
-            ) and add_entity:
-                await add_entity(device)  # pylint: disable=not-callable
+            await self.sync_account_device(device)
 
         if self.add_light_group_entity:
             for group in self.settings["deviceGroups"]:
-                u_id = format_uid(group["id"])
-                entity_id = LIGHT_ENTITY_ID_FORMAT.format(slugify(group["id"]))
-
-                registered_entity_id = entity_registry.async_get_entity_id(
-                    Platform.LIGHT, DOMAIN, slugify(group["id"])  # u_id
-                )
-                existing = (
-                    self.hass.states.get(registered_entity_id)
-                    if registered_entity_id
-                    else self.hass.states.get(entity_id)
-                )
-
-                if (
-                    not registered_entity_id
-                    or not existing
-                    or ATTR_RESTORED in existing.attributes
-                ):
-                    # found klyqa device not in the light entities
-                    if (
-                        len(group["devices"]) > 0
-                        and "productId" in group["devices"][0]
-                        and group["devices"][0]["productId"].startswith(
-                            "@klyqa.lighting"
-                        )
-                    ):
-                        await self.add_light_group_entity(
-                            group
-                        )  # pylint: disable=not-callable
+                await self.sync_account_group(group)
 
 
 class KlyqaControl:
@@ -195,6 +217,7 @@ class KlyqaControl:
 
     async def init(self) -> None:
         """Initialize klyqa control data."""
+
         self.client = await Client.create_worker()
 
 
@@ -256,7 +279,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if acc:
             await acc.shutdown()
 
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, shutdown_klyqa_account)
+    hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_STOP, shutdown_klyqa_account
+    )
 
     # For previous config entries where unique_id is None
     if entry.unique_id is None:
