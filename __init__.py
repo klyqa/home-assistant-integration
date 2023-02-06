@@ -38,9 +38,7 @@ from .const import DOMAIN
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(seconds=120)
 
-""" Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on"""
-
-
+# Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on
 class KlyqaAccount(Account):  # type: ignore[misc]
     """Klyqa account."""
 
@@ -82,34 +80,19 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         """Factory for a Klyqa user account."""
 
         acc: KlyqaAccount = KlyqaAccount(client, client.cloud, hass)
-        acc.username = (  # pylint: disable=attribute-defined-outside-init
-            username
-        )
-        acc.password = (  # pylint: disable=attribute-defined-outside-init
-            password
-        )
+        acc.username = username
+        acc.password = password
 
-        acc._attr_settings_lock = (  # pylint: disable=attribute-defined-outside-init
-            asyncio.Lock()
-        )
         await acc.init()
         return acc
-
-    async def login(self) -> bool:
-        """Login the user account."""
-
-        ret: bool = await super().login()
-        if ret:
-            await async_json_cache(
-                {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
-                "last.klyqa_integration_data.cache.json",
-            )
-        return ret
 
     async def update_account(self) -> None:
         """Update the user account."""
 
-        await self.request_account_settings_eco()
+        try:
+            await self.request_account_settings_eco()
+        except:
+            pass  # we continue offline
 
         await self.sync_account_devices_with_ha_entities()
 
@@ -270,7 +253,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not acc:
         return False
 
-    await acc.login()
+    try:
+        await acc.login()
+    except:
+        pass  # offline we continue with cache
+
     await acc.get_account_state(print_onboarded_devices=False)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
