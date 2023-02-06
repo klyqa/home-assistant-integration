@@ -56,8 +56,8 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return await self._show_setup_form()
 
-        username = str(user_input[CONF_USERNAME])
-        password = str(user_input[CONF_PASSWORD])
+        username = "frederick.stallmeyer@qconnex.com"  # str(user_input[CONF_USERNAME])
+        password = "pass0w0rd"  # str(user_input[CONF_PASSWORD])
 
         return await self._async_klyqa_login(
             step_id="user", username=username, password=password
@@ -76,13 +76,23 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             #     acc.login,
             # )
             # if login:
-            acc = await client.add_account(username, password)
+            acc = await Account.create_default(
+                client,
+                cloud=client.cloud,
+                username=username,
+                password=password,
+            )
+
+            await acc.login()
+            # acc = await client.add_account(username, password)
             # await asyncio.wait_for(login, timeout=30)
             # else:
             #     raise Exception()
 
             if not acc or not acc.access_token:
                 raise ValueError()
+
+            await acc.shutdown()
 
         except (ConnectTimeout, HTTPError, ValueError) as exception:
             LOGGER.error("Unable to connect to Klyqa: %s", exception)

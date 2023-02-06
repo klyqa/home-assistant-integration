@@ -1,18 +1,23 @@
 """Support for Klyqa smart devices."""
 from __future__ import annotations
+
 import asyncio
-
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any, Awaitable
+from typing import Any
 
-from klyqa_ctl import klyqa_ctl as api
+from klyqa_ctl.account import Account
+from klyqa_ctl.communication.cloud import CloudBackend
+from klyqa_ctl.controller_data import ControllerData
 from klyqa_ctl.general.general import (
+    TRACE,
     DeviceConfig,
     DeviceType,
-    format_uid,
     async_json_cache,
+    format_uid,
+    set_debug_logger,
 )
+from klyqa_ctl.klyqa_ctl import Client
 
 from homeassistant.components.light import ENTITY_ID_FORMAT as LIGHT_ENTITY_ID_FORMAT
 from homeassistant.components.vacuum import ENTITY_ID_FORMAT as VACUUM_ENTITY_ID_FORMAT
@@ -29,9 +34,7 @@ from homeassistant.helpers import entity_registry as ent_reg
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import slugify
 
-from .const import (
-    DOMAIN,
-)
+from .const import DOMAIN
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(seconds=120)
@@ -39,7 +42,7 @@ SCAN_INTERVAL: timedelta = timedelta(seconds=120)
 """ Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on"""
 
 
-class KlyqaAccount(api.Account):  # type: ignore[misc]
+class KlyqaAccount(Account):  # type: ignore[misc]
     """Klyqa account."""
 
     hass: HomeAssistant
@@ -48,8 +51,8 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
 
     def __init__(
         self,
-        ctl_data: api.ControllerData,
-        cloud: api.CloudBackend | None,
+        ctl_data: ControllerData,
+        cloud: CloudBackend | None,
         hass: HomeAssistant,
         # data_communicator: api.Data_communicator,
         # username: str = "",
@@ -72,7 +75,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
     @classmethod
     async def create_klyqa_acc(
         cls: Any,
-        client: api.Client,
+        client: Client,
         hass: HomeAssistant,
         username: str = "",
         password: str = "",
@@ -82,17 +85,14 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
         acc: KlyqaAccount = KlyqaAccount(client, client.cloud, hass)
         acc.username = username
         acc.password = password
-        acc.print_onboarded_devices = False
 
         acc._attr_settings_lock = asyncio.Lock()
         await acc.init()
-        # if client.cloud:
-        #     await acc.login(acc.print_onboarded_devices)
         return acc
 
-    async def login(self, print_onboarded_devices: bool = False) -> bool:
+    async def login(self) -> bool:
         """Login."""
-        ret: bool = await super().login(print_onboarded_devices=False)
+        ret: bool = await super().login()
         if ret:
             await async_json_cache(
                 {CONF_USERNAME: self.username, CONF_PASSWORD: self.password},
@@ -115,7 +115,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
 
         entity_registry = ent_reg.async_get(self.hass)
 
-        add_entity: Callable[[dict], Awaitable] | None = None
+        add_entity: Callable[[dict], Awaitable[None]] | None = None
         for device in self.settings["devices"]:
             # look if any onboarded device is not in the entity registry already
             u_id = format_uid(device["localDeviceId"])
@@ -146,7 +146,7 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
                 or not existing
                 or ATTR_RESTORED in existing.attributes
             ) and add_entity:
-                await add_entity(device)
+                await add_entity(device)  # pylint: disable=not-callable
 
         if self.add_light_group_entity:
             for group in self.settings["deviceGroups"]:
@@ -175,7 +175,9 @@ class KlyqaAccount(api.Account):  # type: ignore[misc]
                             "@klyqa.lighting"
                         )
                     ):
-                        await self.add_light_group_entity(group)
+                        await self.add_light_group_entity(
+                            group
+                        )  # pylint: disable=not-callable
 
 
 class KlyqaControl:
@@ -189,11 +191,11 @@ class KlyqaControl:
         self.entries: dict[str, KlyqaAccount] = {}
         self.remove_listeners: list[Callable] = []
         self.entities_area_update: dict[str, set[str]] = {}
-        self.client: api.Client | None = None
+        self.client: Client | None = None
 
     async def init(self) -> None:
         """Initialize klyqa control data."""
-        self.client = await api.Client.create_worker()
+        self.client = await Client.create_worker()
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
@@ -207,35 +209,7 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
 
     await klyqa.init()
 
-    #  username = "frederick.stallmeyer@qconnex.com"
-
-    api.set_debug_logger(level=api.TRACE)
-
-    # ctl_data: ControllerData = await ControllerData.create_default(
-    #     interactive_prompts=True,
-    #     # user_account=account,
-    #     offline=False,
-    # )
-
-    # cloud: CloudBackend = CloudBackend.create_default(ctl_data, host)
-
-    # account: Account | None = None
-    # accounts: dict[str, Account] = dict()
-
-    # account = await Account.create_default(
-    #     controller_data,
-    #     cloud=cloud_backend,
-    #     username=username,
-    #     # password=password,
-    #     print_onboarded_devices=print_onboarded_devices,
-    # )
-    # accounts[account.username] = account
-
-    #     ctl_data=ctl_data,
-    #     local=None,
-    #     cloud=cloud,
-    #     accounts=accounts,
-    # )
+    set_debug_logger(level=TRACE)
 
     return True
 
@@ -274,6 +248,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     await acc.login()
+    await acc.get_account_state(print_onboarded_devices=False)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -296,6 +271,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+
     klyqa_data: KlyqaControl = hass.data[DOMAIN]
 
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
