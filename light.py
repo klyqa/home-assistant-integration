@@ -9,12 +9,16 @@ from klyqa_ctl.devices.light.commands import (
     BrightnessCommand,
     ColorCommand,
     PowerCommand,
+    RequestCommand,
     RoutinePutCommand,
     RoutineStartCommand,
     TemperatureCommand,
 )
 from klyqa_ctl.devices.light.response_status import ResponseStatus
-from klyqa_ctl.devices.light.scenes import SCENES as BULB_SCENES
+from klyqa_ctl.devices.light.scenes import (
+    SCENES as BULB_SCENES,
+    get_scene_by_key,
+)
 from klyqa_ctl.general.general import (
     PRODUCT_URLS,
     Command,
@@ -59,7 +63,7 @@ from homeassistant.util.color import (
     color_temperature_mired_to_kelvin,
 )
 
-from . import SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
+from . import PARALLEL_UPDATES, SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
 from .const import DOMAIN, LOGGER
 
 TIMEOUT_SEND: int = 30
@@ -95,24 +99,11 @@ async def async_setup_klyqa(
 ) -> None:
     """Set up the Klyqa Light platform."""
 
-    async def on_hass_stop(event: Event) -> None:
-        """Stop push updates when hass stops."""
-
-        await acc.shutdown()
-
-    if entry:
-        listener = hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_STOP, on_hass_stop
-        )
-        entry.async_on_unload(listener)
-
     entity_registry: EntityRegistry = er.async_get(hass)
 
     async def add_new_light_group(device_settings: dict) -> None:
 
-        entity: KlyqaLightGroupEntity = KlyqaLightGroupEntity(
-            hass, device_settings
-        )
+        entity: KlyqaLightGroupEntity = KlyqaLightGroupEntity(hass, device_settings)
 
         add_entities([entity], True)
 
@@ -136,9 +127,7 @@ async def async_setup_klyqa(
             Platform.LIGHT, DOMAIN, u_id
         )
 
-        LOGGER.info(
-            "Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name")
-        )
+        LOGGER.info("Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name"))
 
         new_entity: KlyqaLightEntity = KlyqaLightEntity()
         new_entity.init(
@@ -150,7 +139,7 @@ async def async_setup_klyqa(
             hass=hass,
         )
         if new_entity:
-            add_entities([new_entity], True)
+            hass.add_job(add_entities, [new_entity], True)
 
     acc.add_light_entity = add_new_light
     acc.add_light_group_entity = add_new_light_group
@@ -179,9 +168,7 @@ class KlyqaLightGroupEntity(LightGroup):
 
             entity_ids.append(ENTITY_ID_FORMAT.format(uid))
 
-        super().__init__(
-            slugify(u_id), settings["name"], entity_ids, mode=None
-        )
+        super().__init__(slugify(u_id), settings["name"], entity_ids, mode=None)
 
 
 class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
@@ -212,28 +199,24 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             self._attr_transition_time = kwargs[ATTR_TRANSITION]
 
         if ATTR_HS_COLOR in kwargs:
-            self._attr_rgb_color = color_util.color_hs_to_RGB(
-                *kwargs[ATTR_HS_COLOR]
-            )
+            self._attr_rgb_color = color_util.color_hs_to_RGB(*kwargs[ATTR_HS_COLOR])
             self._attr_hs_color = kwargs[ATTR_HS_COLOR]
 
         if ATTR_RGB_COLOR in kwargs:
             self._attr_rgb_color = kwargs[ATTR_RGB_COLOR]
 
         if self._attr_rgb_color and (
-            self._attr_rgb_color
-            and ATTR_RGB_COLOR in kwargs
-            or ATTR_HS_COLOR in kwargs
+            self._attr_rgb_color and ATTR_RGB_COLOR in kwargs or ATTR_HS_COLOR in kwargs
         ):
             command = ColorCommand(color=RgbColor(*self._attr_rgb_color))
 
         if ATTR_EFFECT in kwargs:
 
-            async def send_routine() -> None:
-                await self.send(RoutinePutCommand.create(kwargs[ATTR_EFFECT]))
-                await self.send(RoutineStartCommand(id="0"))
+            # async def send_routine() -> None:
+            await self.send(RoutinePutCommand.create(kwargs[ATTR_EFFECT]))
+            await self.send(RoutineStartCommand(id="0"))
 
-            self.entity_job(send_routine)
+            # await self.entity_job(send_routine)
 
         if ATTR_COLOR_TEMP in kwargs:
             self._attr_color_temp = kwargs[ATTR_COLOR_TEMP]
@@ -257,18 +240,18 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             )
             command = BrightnessCommand(brightness=self._attr_brightness)
 
-        async def power_on() -> None:
-            if command:
-                await self.send(command)
-            await self.send(PowerCommand())
+        # async def power_on() -> None:
+        if command:
+            await self.send(command)
+        await self.send(PowerCommand())
 
-        self.entity_job(power_on)
+        # await self.entity_job(power_on)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Instruct the light to turn off."""
 
         cmd = PowerCommand(status="off")
-        self.entity_job(self.send, cmd)
+        await self.entity_job(self.send, cmd)
 
     async def set_device_capabilities(self) -> None:
         """Look up profile."""
@@ -307,11 +290,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                     temp_range.min if temp_range else 2000
                 )
 
-            if [
-                x
-                for x in device_traits
-                if "msg_key" in x and x["msg_key"] == "color"
-            ]:
+            if [x for x in device_traits if "msg_key" in x and x["msg_key"] == "color"]:
                 self._attr_supported_color_modes.add(ColorMode.RGB)
                 self._attr_supported_features |= LightEntityFeature.EFFECT  # type: ignore[assignment]
                 self._attr_effect_list = [x["label"] for x in BULB_SCENES]
@@ -323,8 +302,9 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
 
-        if self._kq_acc.settings is None:
+        if self._kq_acc.settings is None or self._kq_acc_dev.acc_settings is None:
             return
+
         settings: TypeJson = self._kq_acc_dev.acc_settings
 
         await self.set_device_capabilities()
@@ -364,9 +344,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         )
 
         if entity_registry_entry:
-            self._attr_device_info[
-                "suggested_area"
-            ] = entity_registry_entry.area_id
+            self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
 
         device_entry: dr.DeviceEntry | None = None
         if self.config_entry:
@@ -420,26 +398,24 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                         device_entry.id, area_id=entity_registry_entry.area_id
                     )
 
-                if (
-                    entity_registry_entry
-                    and entity_registry_entry.area_id != area.id
-                ):
+                if entity_registry_entry and entity_registry_entry.area_id != area.id:
                     LOGGER.info("Add bulb %s to room %s", self.name, area.name)
                     entity_registry.async_update_entity(
                         entity_id=entity_registry_entry.entity_id,
                         area_id=area.id,
                     )
 
-    def update_device_state(
-        self, state_complete: ResponseStatus | None
-    ) -> None:
+    async def request_device_state(self) -> None:
+        """Send device state request to device."""
+
+        await self.send(RequestCommand(), time_to_live_secs=5)
+
+    def update_device_state(self, state_complete: ResponseStatus) -> None:
         """Process state request response from the bulb to the entity state."""
 
         self._attr_assumed_state = True
 
-        if not state_complete or not isinstance(
-            state_complete, ResponseStatus
-        ):
+        if not state_complete or not isinstance(state_complete, ResponseStatus):
             self._attr_is_on = False
             self._attr_assumed_state = False
             return
@@ -455,9 +431,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         self._kq_dev.status = state_complete
 
         self._attr_color_temp = (
-            color_temperature_kelvin_to_mired(
-                float(state_complete.temperature)
-            )
+            color_temperature_kelvin_to_mired(float(state_complete.temperature))
             if state_complete.temperature
             else 0
         )
@@ -467,9 +441,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                 int(state_complete.color.g),
                 int(state_complete.color.b),
             )
-            self._attr_hs_color = color_util.color_RGB_to_hs(
-                *self._attr_rgb_color
-            )
+            self._attr_hs_color = color_util.color_RGB_to_hs(*self._attr_rgb_color)
 
         self._attr_brightness = (
             int((float(state_complete.brightness) / 100) * 255)
@@ -478,12 +450,8 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         )
 
         self._attr_is_on = (
-            isinstance(state_complete.status, list)
-            and state_complete.status[0] == "on"
-        ) or (
-            isinstance(state_complete.status, str)
-            and state_complete.status == "on"
-        )
+            isinstance(state_complete.status, list) and state_complete.status[0] == "on"
+        ) or (isinstance(state_complete.status, str) and state_complete.status == "on")
 
         self._attr_color_mode = (
             ColorMode.COLOR_TEMP
@@ -494,11 +462,8 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         )
         self._attr_effect = ""
         if state_complete.mode == "cmd":
-            scene_result = [
-                x
-                for x in BULB_SCENES
-                if str(x["id"]) == state_complete.active_scene
-            ]
-            if len(scene_result) > 0:
-                self._attr_effect = scene_result[0]["label"]
+            scn = get_scene_by_key("id", state_complete.active_scene)
+            if scn:
+                self._attr_effect = scn["label"]
+
         self._attr_assumed_state = False
