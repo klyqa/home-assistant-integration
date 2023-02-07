@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from klyqa_ctl import klyqa_ctl as api
 from klyqa_ctl.account import Account
-from klyqa_ctl.klyqa_ctl import Client
 from klyqa_ctl.controller_data import ControllerData
-
+from klyqa_ctl.klyqa_ctl import Client
 from requests.exceptions import ConnectTimeout, HTTPError
 import voluptuous as vol
 
@@ -56,8 +56,16 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return await self._show_setup_form()
 
-        username = "frederick.stallmeyer@qconnex.com"  # str(user_input[CONF_USERNAME])
-        password = "pass0w0rd"  # str(user_input[CONF_PASSWORD])
+        username = (
+            os.environ["KLYQA_USERNAME"]
+            if "KLYQA_USERNAME" in os.environ
+            else str(user_input[CONF_USERNAME])
+        )
+        password = (
+            os.environ["KLYQA_PASSWORD"]
+            if "KLYQA_PASSWORD" in os.environ
+            else str(user_input[CONF_PASSWORD])
+        )
 
         return await self._async_klyqa_login(
             step_id="user", username=username, password=password
@@ -103,7 +111,9 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return await self._async_create_entry(username, password)
 
-    async def _async_create_entry(self, username: str, password: str) -> FlowResult:
+    async def _async_create_entry(
+        self, username: str, password: str
+    ) -> FlowResult:
         """Create the config entry."""
 
         config_data = {
