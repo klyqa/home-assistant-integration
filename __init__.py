@@ -4,6 +4,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from logging import DEBUG
 from typing import Any
 
 from klyqa_ctl.account import Account, AccountDevice
@@ -20,7 +21,9 @@ from klyqa_ctl.general.general import (
     TypeJson,
     format_uid,
     set_debug_logger,
+    set_logger,
 )
+from klyqa_ctl.general.message import Message
 from klyqa_ctl.klyqa_ctl import Client
 
 from homeassistant.components.light import ENTITY_ID_FORMAT
@@ -42,7 +45,7 @@ from .const import DOMAIN, LOGGER
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(minutes=5000)
-# PARALLEL_UPDATES = 222
+# PARALLEL_UPDATES = 0
 
 # Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on
 class KlyqaAccount(Account):  # type: ignore[misc]
@@ -70,10 +73,14 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         self.add_light_entity: Callable[
             [str, AccountDevice], Awaitable[None]
         ] | None = None
-        self.add_light_group_entity: Callable[[dict], Awaitable[None]] | None = None
+        self.add_light_group_entity: Callable[
+            [dict], Awaitable[None]
+        ] | None = None
         self.add_cleaner_entity: Callable[
             [str, AccountDevice], Awaitable[None]
         ] | None = None
+        # self.entities_added: bool = False  # for now we add entities
+        self.entity_ids: set[str | None] = set()
 
     @classmethod
     async def create_klyqa_acc(
@@ -100,7 +107,9 @@ class KlyqaAccount(Account):  # type: ignore[misc]
         except:
             pass  # we continue offline
 
+        # if not self.entities_added:
         await self.sync_account_devices_with_ha_entities()
+        # self.entities_added = True
 
     async def is_entity_registered(self, uid: str, platform: str) -> bool:
         """Check if entity is already registered in Home Assistant."""
@@ -127,16 +136,22 @@ class KlyqaAccount(Account):  # type: ignore[misc]
 
         return True
 
-    async def sync_account_device(self, u_id: str, acc_dev: AccountDevice) -> None:
+    async def sync_account_device(
+        self, u_id: str, acc_dev: AccountDevice
+    ) -> None:
         """Synchronize account device with Home Assistant."""
 
-        add_entity: Callable[[str, AccountDevice], Awaitable[None]] | None = None
+        add_entity: Callable[
+            [str, AccountDevice], Awaitable[None]
+        ] | None = None
 
         platform: str = ""
         if self.add_light_entity and isinstance(acc_dev.device, Light):
             platform = Platform.LIGHT
             add_entity = self.add_light_entity
-        elif self.add_cleaner_entity and isinstance(acc_dev.device, VacuumCleaner):
+        elif self.add_cleaner_entity and isinstance(
+            acc_dev.device, VacuumCleaner
+        ):
             platform = Platform.VACUUM
             add_entity = self.add_cleaner_entity
         else:
@@ -147,13 +162,17 @@ class KlyqaAccount(Account):  # type: ignore[misc]
 
         if add_entity:
             await add_entity(u_id, acc_dev)  # pylint: disable=not-callable
+            self.entity_ids.add(u_id)
 
     async def sync_account_group(self, group: TypeJson) -> None:
         """Synchronize account device group with Home Assistant."""
 
         u_id: str = format_uid(group["id"])
 
-        if await self.is_entity_registered(u_id, Platform.LIGHT):
+        if (
+            await self.is_entity_registered(u_id, Platform.LIGHT)
+            or u_id in self.entity_ids
+        ):
             return
 
         if self.add_light_group_entity:
@@ -161,9 +180,15 @@ class KlyqaAccount(Account):  # type: ignore[misc]
             if (
                 len(group["devices"]) > 0
                 and "productId" in group["devices"][0]
-                and group["devices"][0]["productId"].startswith("@klyqa.lighting")
+                and group["devices"][0]["productId"].startswith(
+                    "@klyqa.lighting"
+                )
             ):
-                await self.add_light_group_entity(group)  # pylint: disable=not-callable
+                await self.add_light_group_entity(  # pylint: disable=not-callable,line-too-long
+                    group
+                )
+
+                self.entity_ids.add(u_id)
 
     async def sync_account_devices_with_ha_entities(self) -> None:
         """Synchronize account devices with Home Assistant."""
@@ -172,7 +197,8 @@ class KlyqaAccount(Account):  # type: ignore[misc]
             return None
 
         for u_id, device in self.devices.items():
-            await self.sync_account_device(u_id, device)
+            if u_id not in self.entity_ids:
+                await self.sync_account_device(u_id, device)
 
         if self.add_light_group_entity:
             for group in self.settings["deviceGroups"]:
@@ -204,12 +230,13 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     if DOMAIN in hass.data:
         return True
 
+    set_logger(logger=_LOGGER)
+    set_debug_logger(level=DEBUG)
+
     klyqa: KlyqaControl = KlyqaControl()
     hass.data[DOMAIN] = klyqa
 
     await klyqa.init()
-
-    set_debug_logger(level=TRACE)
 
     return True
 
@@ -308,14 +335,22 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 class KlyqaEntity(Entity):
     """Representation of a Klyqa entity."""
 
-    _kq_dev: Device
-    _kq_acc: KlyqaAccount
-    _kq_acc_dev: AccountDevice
+    # _kq_dev: Device
+    # _kq_acc: KlyqaAccount
+    # _kq_acc_dev: AccountDevice
 
-    u_id: str
-    hass: HomeAssistant
+    # u_id: str
+    # hass: HomeAssistant
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        acc_dev: AccountDevice,
+        acc: KlyqaAccount,
+        entity_id: str,
+        hass: HomeAssistant,
+        should_poll: bool = True,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize the Klyqa entity."""
 
         super().__init__()
@@ -325,31 +360,33 @@ class KlyqaEntity(Entity):
         self._added_to_hass: bool = False
         self.config_entry: ConfigEntry | None = None
 
-    def init(
-        self,
-        acc_dev: AccountDevice,
-        acc: KlyqaAccount,
-        entity_id: str,
-        hass: HomeAssistant,
-        should_poll: bool = True,
-        config_entry: ConfigEntry | None = None,
-    ) -> None:
-        """Initialize a Klyqa vacuum cleaner."""
+        # def init(
+        #     self,
+        #     acc_dev: AccountDevice,
+        #     acc: KlyqaAccount,
+        #     entity_id: str,
+        #     hass: HomeAssistant,
+        #     should_poll: bool = True,
+        #     config_entry: ConfigEntry | None = None,
+        # ) -> None:
+        #     """Initialize the Klyqa Entit."""
 
-        self.hass = hass
+        # self.hass = hass
 
-        self._kq_acc = acc
-        self._kq_acc_dev = acc_dev
-        self._kq_dev = acc_dev.device
+        self._kq_acc: KlyqaAccount = acc
+        self._kq_acc_dev: AccountDevice = acc_dev
+        self._kq_dev: Device = acc_dev.device
 
-        self.u_id = format_uid(acc_dev.acc_settings["localDeviceId"])
+        self.u_id: str = format_uid(acc_dev.acc_settings["localDeviceId"])
         self._attr_unique_id: str = format_uid(self.u_id)
         self.entity_id = entity_id
 
-        self._attr_should_poll = should_poll
+        self._attr_should_poll = False  # should_poll
         self.config_entry = config_entry
 
-    async def send(self, command, time_to_live_secs=DEFAULT_SEND_TIMEOUT_MS) -> None:
+    async def send(
+        self, command, time_to_live_secs=DEFAULT_SEND_TIMEOUT_MS
+    ) -> Message | None:
         """Send command to device."""
 
         _LOGGER.info(
@@ -358,12 +395,15 @@ class KlyqaEntity(Entity):
             " (" + self.name + ")" if self.name else "",
             command.msg_str(),
         )
-        await self._kq_dev.send_msg_local(
+        msg: Message | None = await self._kq_dev.send_msg_local(
             [command], time_to_live_secs=time_to_live_secs
         )
         self.update_device_state(self._kq_dev.status)
+        return msg
 
-    async def entity_job(self, cb: Callable[..., Awaitable[None]], *args: Any) -> None:
+    async def entity_job(
+        self, cb: Callable[..., Awaitable[None]], *args: Any
+    ) -> None:
         """Schedule a job and after finish, schedule an entity state
         update."""
 
@@ -372,7 +412,7 @@ class KlyqaEntity(Entity):
         async def job() -> None:
 
             await cb(*args)
-            self.schedule_update_ha_state(force_refresh=False)
+            # self.schedule_update_ha_state(force_refresh=False)
 
         self.hass.add_job(job)
 
@@ -399,10 +439,13 @@ class KlyqaEntity(Entity):
     async def async_update(self) -> None:
         """Fetch new state data for this device. Called by HA."""
 
+        if not self.hass or not self.enabled:
+            return
+
         async def update() -> None:
 
             name: str = f" ({self.name})" if self.name else ""
-            LOGGER.info("Update bulb %s%s", self.entity_id, name)
+            LOGGER.info("Update device %s%s", self.entity_id, name)
 
             await self.async_update_klyqa()
             await self.request_device_state()

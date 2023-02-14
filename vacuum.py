@@ -1,10 +1,10 @@
 """Support for klyqa vacuum cleaners."""
 from __future__ import annotations
-import asyncio
 
+import asyncio
 from enum import Enum
 import traceback
-from typing import Any
+from typing import Any, cast
 
 from klyqa_ctl.account import AccountDevice
 from klyqa_ctl.communication.cloud import RequestMethod
@@ -20,11 +20,11 @@ from klyqa_ctl.devices.vacuum.general import (
 )
 from klyqa_ctl.devices.vacuum.response_status import ResponseStatus
 from klyqa_ctl.general.general import (
+    DEFAULT_SEND_TIMEOUT_MS,
     PRODUCT_URLS,
     TypeJson,
     enum_index,
     format_uid,
-    DEFAULT_SEND_TIMEOUT_MS,
 )
 
 from homeassistant.components.vacuum import (
@@ -39,18 +39,19 @@ from homeassistant.components.vacuum import (
     VacuumEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import PARALLEL_UPDATES, SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
+from . import KlyqaAccount, KlyqaEntity  # PARALLEL_UPDATES, SCAN_INTERVAL
 from .const import DOMAIN, LOGGER
 
-TIMEOUT_SEND = 30
+# TIMEOUT_SEND = 30
 # SCAN_INTERVAL: timedelta = timedelta(minutes=5)
 
 SUPPORT_KLYQA: VacuumEntityFeature = (
@@ -107,17 +108,23 @@ async def async_setup_klyqa(
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, u_id
         )
+        component: EntityComponent = hass.data[Platform.VACUUM]
+        if component.get_entity(entity_id):
+            return
 
         if registered_entity_id and registered_entity_id != entity_id:
             entity_registry.async_remove(str(registered_entity_id))
+        # else:
+        #     return
 
         registered_entity_id = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, u_id
         )
 
-        LOGGER.info("Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name"))
-        new_entity: KlyqaVCEntity = KlyqaVCEntity()
-        new_entity.init(
+        LOGGER.info(
+            "Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name")
+        )
+        new_entity: KlyqaVCEntity = KlyqaVCEntity(
             acc_dev,
             acc,
             entity_id,
@@ -139,10 +146,23 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
 
     def __init__(
         self,
+        acc_dev: AccountDevice,
+        acc: KlyqaAccount,
+        entity_id: str,
+        hass: HomeAssistant,
+        should_poll: bool = True,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize a Klyqa vacuum cleaner."""
 
-        super().__init__()
+        super().__init__(
+            acc_dev,
+            acc,
+            entity_id,
+            should_poll=should_poll,
+            config_entry=config_entry,
+            hass=hass,
+        )
 
         self._attr_supported_features = SUPPORT_KLYQA
 
@@ -153,10 +173,12 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             VcSuctionStrengths.STRONG.name,
             VcSuctionStrengths.MAX.name,
         ]
-        self._attr_state = None
+        self._state: str | None = None
         self._attr_battery_level = 0
 
-    async def send(self, command, time_to_live_secs=DEFAULT_SEND_TIMEOUT_MS) -> None:
+    async def send(
+        self, command, time_to_live_secs=DEFAULT_SEND_TIMEOUT_MS
+    ) -> None:
         """Send command to device."""
 
         await super().send(command, time_to_live_secs)
@@ -167,6 +189,7 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
         """Stop the vacuum cleaner, do not return to base."""
 
         await self.send(RequestSetCommand(cleaning="off"))
+        await self.send(RequestSetCommand(power="off"))
 
     async def async_start(self) -> None:
         """Start or resume the cleaning task."""
@@ -188,7 +211,9 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
 
         await self.request_device_state()
         set_to: str = "on"
-        status: ResponseStatus | None = self._kq_dev.status
+        status: ResponseStatus | None = cast(
+            ResponseStatus, self._kq_dev.status
+        )
 
         if status is not None and status.beeping == "on":
             set_to = "off"
@@ -200,9 +225,11 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
 
         This method must be run in the event loop.
         """
-        fs_idx: int = enum_index(fan_speed, VcSuctionStrengths)
+        fs_idx: int = enum_index(fan_speed, cast(Enum, VcSuctionStrengths))
 
-        await self.send(RequestSetCommand(suction=fs_idx))
+        await self.send(
+            RequestSetCommand(suction=cast(VcSuctionStrengths, fs_idx))
+        )
 
     async def async_pause(self) -> None:
         """Pause the cleaning task.
@@ -210,6 +237,7 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
         This method must be run in the event loop.
         """
 
+        await self.send(RequestSetCommand(cleaning="off"))
         await self.send(RequestSetCommand(workingmode=VcWorkingMode.STANDBY))
 
     async def async_return_to_base(self, **kwargs: Any) -> None:
@@ -229,7 +257,10 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
 
-        if self._kq_acc.settings is None or self._kq_acc_dev.acc_settings is None:
+        if (
+            self._kq_acc.settings is None
+            or self._kq_acc_dev.acc_settings is None
+        ):
             return
 
         settings: TypeJson = self._kq_acc_dev.acc_settings
@@ -240,7 +271,10 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
         else:
             try:
                 acc: KlyqaAccount = self._kq_acc
-                acc.cloud.get_device_configs(set(self._kq_dev.product_id))
+                if acc.cloud:
+                    await acc.cloud.get_device_configs(
+                        set(self._kq_dev.product_id)
+                    )
                 self.device_config = self._kq_dev.device_config
             except:  # pylint: disable=bare-except # noqa: E722
                 # If we don't get a reply, the config can come from the
@@ -285,14 +319,18 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             )
 
         if entity_registry_entry:
-            self._attr_device_info["suggested_area"] = entity_registry_entry.area_id
+            self._attr_device_info[
+                "suggested_area"
+            ] = entity_registry_entry.area_id
 
     def update_device_state(self, state_complete: ResponseStatus) -> None:
         """Process state request response from the device to the entity state."""
 
         self._attr_assumed_state = True
 
-        if not state_complete or not isinstance(state_complete, ResponseStatus):
+        if not state_complete or not isinstance(
+            state_complete, ResponseStatus
+        ):
             return
 
         LOGGER.debug(
@@ -332,7 +370,7 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             STATE_ERROR,
         ]
 
-        self._attr_state = (
+        self._state = (
             status[state_complete.workingstatus - 1]
             if state_complete.workingstatus is not None
             and state_complete.workingstatus > 0
@@ -340,10 +378,10 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             else None
         )
         # sometimes workingstatus not correct.
-        if state_complete.cleaning == "off" and self._attr_state == STATE_CLEANING:
-            self._attr_state = STATE_PAUSED
+        if state_complete.cleaning == "off" and self._state == STATE_CLEANING:
+            self._state = STATE_PAUSED
         if state_complete.cleaning == "on":
-            self._attr_state = STATE_CLEANING
+            self._state = STATE_CLEANING
 
         speed_name: str | None = (
             list(VcSuctionStrengths)[state_complete.suction - 1].name
@@ -358,14 +396,17 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             else None
         )
         self._attr_fan_speed = (
-            self._attr_fan_speed_list[speed] if speed is not None and speed > -1 else ""
+            self._attr_fan_speed_list[speed]
+            if speed is not None and speed > -1
+            else ""
         )
 
         self._attr_assumed_state = False
+        self.schedule_update_ha_state()
 
     @property
     def state(self) -> str | None:
         """Return the state of the vacuum cleaner."""
-        if self._attr_state is None:
+        if self._state is None:
             return STATE_ERROR
-        return self._attr_state
+        return self._state
