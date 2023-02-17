@@ -534,8 +534,13 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             else state_complete.mode
         )
         self._attr_effect = ""
-        if state_complete.mode == "cmd":
-            scn = get_scene_by_value("id", state_complete.active_scene)
+        if (
+            state_complete.mode == "cmd"
+            and state_complete.active_scene is not None
+        ):
+            scn: dict[str, Any] = get_scene_by_value(
+                "id", int(state_complete.active_scene)
+            )
             if scn:
                 self._attr_effect = scn["label"]
 
