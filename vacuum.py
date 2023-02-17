@@ -353,22 +353,17 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             int(state_complete.battery) if state_complete.battery else 0
         )
 
-        status: list[str] = [
-            STATE_IDLE,
-            STATE_PAUSED,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_CLEANING,
-            STATE_RETURNING,
-            STATE_DOCKED,
-            STATE_IDLE,
-            STATE_DOCKED,
-            STATE_ERROR,
-        ]
+        status: list[str] = (
+            [STATE_IDLE, STATE_PAUSED]
+            + 7 * [STATE_CLEANING]
+            + [
+                STATE_RETURNING,
+                STATE_DOCKED,
+                STATE_IDLE,
+                STATE_DOCKED,
+                STATE_ERROR,
+            ]
+        )
 
         self._state = (
             status[state_complete.workingstatus - 1]
