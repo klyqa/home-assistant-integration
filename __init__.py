@@ -23,7 +23,7 @@ from klyqa_ctl.general.general import (
     set_debug_logger,
     set_logger,
 )
-from klyqa_ctl.general.message import Message
+from klyqa_ctl.general.message import Message, MessageState
 from klyqa_ctl.klyqa_ctl import Client
 
 from homeassistant.components.light import ENTITY_ID_FORMAT
@@ -212,10 +212,7 @@ class KlyqaControl:
         """Initialize the system."""
 
         self.polling: bool = polling
-        self.entity_ids: set[str | None] = set()
         self.entries: dict[str, KlyqaAccount] = {}
-        self.remove_listeners: list[Callable] = []
-        self.entities_area_update: dict[str, set[str]] = {}
         self.client: Client | None = None
 
     async def init(self) -> None:
@@ -312,11 +309,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
 
-    while klyqa_data.remove_listeners:
-        listener: Callable = klyqa_data.remove_listeners.pop(-1)
-        if callable(listener):
-            listener()
-
     if DOMAIN in hass.data:
         if entry.entry_id in klyqa_data.entries:
             if klyqa_data.entries[entry.entry_id]:
@@ -334,13 +326,6 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 class KlyqaEntity(Entity):
     """Representation of a Klyqa entity."""
-
-    # _kq_dev: Device
-    # _kq_acc: KlyqaAccount
-    # _kq_acc_dev: AccountDevice
-
-    # u_id: str
-    # hass: HomeAssistant
 
     def __init__(
         self,
@@ -360,19 +345,6 @@ class KlyqaEntity(Entity):
         self._added_to_hass: bool = False
         self.config_entry: ConfigEntry | None = None
 
-        # def init(
-        #     self,
-        #     acc_dev: AccountDevice,
-        #     acc: KlyqaAccount,
-        #     entity_id: str,
-        #     hass: HomeAssistant,
-        #     should_poll: bool = True,
-        #     config_entry: ConfigEntry | None = None,
-        # ) -> None:
-        #     """Initialize the Klyqa Entit."""
-
-        # self.hass = hass
-
         self._kq_acc: KlyqaAccount = acc
         self._kq_acc_dev: AccountDevice = acc_dev
         self._kq_dev: Device = acc_dev.device
@@ -384,13 +356,18 @@ class KlyqaEntity(Entity):
         self._attr_should_poll = False  # should_poll
         self.config_entry = config_entry
 
+        def status_update_cb() -> None:
+            self.update_device_state(acc_dev.device.status)
+
+        acc_dev.device.add_status_update_cb(status_update_cb)
+
     async def send(
         self, command, time_to_live_secs=DEFAULT_SEND_TIMEOUT_MS
     ) -> Message | None:
         """Send command to device."""
 
         _LOGGER.info(
-            "Send to bulb %s%s: %s",
+            "Send to device %s%s: %s",
             str(self.entity_id),
             " (" + self.name + ")" if self.name else "",
             command.msg_str(),
@@ -398,7 +375,10 @@ class KlyqaEntity(Entity):
         msg: Message | None = await self._kq_dev.send_msg_local(
             [command], time_to_live_secs=time_to_live_secs
         )
-        self.update_device_state(self._kq_dev.status)
+        if not msg or msg.state != MessageState.ANSWERED:
+            self.update_device_state(None)
+        else:
+            self.update_device_state(self._kq_dev.status)
         return msg
 
     async def entity_job(
@@ -428,7 +408,7 @@ class KlyqaEntity(Entity):
         """Set device specific settings from the klyqa settings cloud."""
 
     @abstractmethod
-    def update_device_state(self, state_complete) -> None:  #
+    def update_device_state(self, state_complete) -> None:
         """Process state request response from the device to the entity
         state."""
 
