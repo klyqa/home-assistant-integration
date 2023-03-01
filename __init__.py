@@ -22,6 +22,7 @@ from klyqa_ctl.general.general import (
     format_uid,
     set_debug_logger,
     set_logger,
+    LOGGER_DBG,
 )
 from klyqa_ctl.general.message import Message, MessageState
 from klyqa_ctl.klyqa_ctl import Client
@@ -44,11 +45,10 @@ from homeassistant.helpers.typing import ConfigType
 from .const import DOMAIN, LOGGER
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
-SCAN_INTERVAL: timedelta = timedelta(minutes=5000)
-# PARALLEL_UPDATES = 0
+SCAN_INTERVAL: timedelta = timedelta(minutes=5)
 
-# Ignore type, because the Klyqa_account class is in another file and --follow-imports=strict is on
-class KlyqaAccount(Account):  # type: ignore[misc]
+
+class KlyqaAccount(Account):
     """Klyqa account."""
 
     hass: HomeAssistant
@@ -228,7 +228,26 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
         return True
 
     set_logger(logger=_LOGGER)
-    set_debug_logger(level=DEBUG)
+
+    if (
+        "logger" in yaml_config
+        and "logs" in yaml_config["logger"]
+        and (
+            (
+                "custom_components.klyqa" in yaml_config["logger"]["logs"]
+                and yaml_config["logger"]["logs"]["custom_components.klyqa"]
+                == "debug"
+            )
+            or (
+                "homeassistant.components.klyqa"
+                in yaml_config["logger"]["logs"]
+                and yaml_config["logger"]["logs"]["custom_components.klyqa"]
+                == "debug"
+            )
+        )
+    ):
+        set_debug_logger(level=DEBUG)
+        LOGGER_DBG.propagate = False
 
     klyqa: KlyqaControl = KlyqaControl()
     hass.data[DOMAIN] = klyqa
@@ -275,7 +294,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await acc.login()
         await acc.get_account_state(print_onboarded_devices=False)
     except:
-        pass  # offline we continue with cache
+        pass  # offline we continue with cache if available
 
     async def on_hass_stop(event: Event) -> None:
         """Logout from account."""
@@ -367,7 +386,7 @@ class KlyqaEntity(Entity):
         """Send command to device."""
 
         _LOGGER.info(
-            "Send to device %s%s: %s",
+            "Send to bulb %s%s: %s",
             str(self.entity_id),
             " (" + self.name + ")" if self.name else "",
             command.msg_str(),
@@ -380,21 +399,6 @@ class KlyqaEntity(Entity):
         else:
             self.update_device_state(self._kq_dev.status)
         return msg
-
-    async def entity_job(
-        self, cb: Callable[..., Awaitable[None]], *args: Any
-    ) -> None:
-        """Schedule a job and after finish, schedule an entity state
-        update."""
-
-        # await cb(*args)
-
-        async def job() -> None:
-
-            await cb(*args)
-            # self.schedule_update_ha_state(force_refresh=False)
-
-        self.hass.add_job(job)
 
     async def async_update_klyqa(self) -> None:
         """Fetch settings from klyqa cloud account."""
@@ -429,9 +433,8 @@ class KlyqaEntity(Entity):
 
             await self.async_update_klyqa()
             await self.request_device_state()
-            # self.update_device_state(self._kq_dev.status)
 
-        await self.entity_job(update)
+        self.hass.add_job(update)
 
     async def async_added_to_hass(self) -> None:
         """Added to hass."""

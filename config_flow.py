@@ -53,19 +53,23 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle a flow initialized by the user."""
+
         if user_input is None:
             return await self._show_setup_form()
 
-        username = (
-            os.environ["KLYQA_USERNAME"]
-            if "KLYQA_USERNAME" in os.environ
-            else str(user_input[CONF_USERNAME])
-        )
-        password = (
-            os.environ["KLYQA_PASSWORD"]
-            if "KLYQA_PASSWORD" in os.environ
-            else str(user_input[CONF_PASSWORD])
-        )
+        username = str(user_input[CONF_USERNAME])
+        # username = (
+        #     os.environ["KLYQA_USERNAME"]
+        #     if "KLYQA_USERNAME" in os.environ
+        #     else str(user_input[CONF_USERNAME])
+        # )
+
+        password = str(user_input[CONF_PASSWORD])
+        # password = (
+        #     os.environ["KLYQA_PASSWORD"]
+        #     if "KLYQA_PASSWORD" in os.environ
+        #     else str(user_input[CONF_PASSWORD])
+        # )
 
         return await self._async_klyqa_login(
             step_id="user", username=username, password=password
@@ -75,6 +79,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, step_id: str, username: str, password: str
     ) -> FlowResult:
         """Handle login with Klyqa."""
+
         errors = {}
         acc: Account | None = None
         try:
