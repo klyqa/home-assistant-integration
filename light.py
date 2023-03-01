@@ -64,7 +64,7 @@ from homeassistant.util.color import (
     color_temperature_mired_to_kelvin,
 )
 
-from . import SCAN_INTERVAL, KlyqaAccount, KlyqaEntity  # PARALLEL_UPDATES
+from . import SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
 from .const import DOMAIN, LOGGER
 
 # TIMEOUT_SEND: int = 30
@@ -236,15 +236,11 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             command = ColorCommand(color=RgbColor(*self._attr_rgb_color))
 
         if ATTR_EFFECT in kwargs:
-
-            # async def send_routine() -> None:
             msg: Message | None = await self.send(
                 RoutinePutCommand.create(kwargs[ATTR_EFFECT], id_in_dev="0")
             )
             if msg and msg.state == MessageState.ANSWERED:
                 await self.send(RoutineStartCommand(id="0"))
-
-            # await self.entity_job(send_routine)
 
         if ATTR_COLOR_TEMP in kwargs:
             self._attr_color_temp = kwargs[ATTR_COLOR_TEMP]
@@ -267,37 +263,20 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                 round((kwargs[ATTR_BRIGHTNESS_PCT] / 100) * 255)
             )
             command = BrightnessCommand(brightness=self._attr_brightness)
-
-        async def power_on(*_: Any) -> None:
-            await self.send(PowerCommand())
-            # self.async_write_ha_state()
-
         if command:
-            await self.entity_job(self.send, command)
-            # await self.entity_job(self.send, PowerCommand())
-            # await self.send(command)
-            # await self.send(PowerCommand())
-            # await self._kq_dev.local_con.send_command_to_device_cb(
-            #     self._kq_dev.u_id,
-            #     [command],
-            #     power_on,
-            #     time_to_live_secs=111,
-            # )
+            await self.send(command)
         else:
             repl: Message | None = await self.send(PowerCommand())
             if repl:
                 print(repl.answer_utf8)
-        # await self.entity_job(power_on)
-        print("end")
+
+        await self.send(RequestCommand())
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Instruct the light to turn off."""
 
-        cmd = PowerCommand(status="off")
-        await self.entity_job(self.send, cmd)
-        # repl: Message | None = await self.send(cmd)
-        # if repl:
-        #     print(repl.answer_utf8)
+        cmd: PowerCommand = PowerCommand(status="off")
+        self.hass.add_job(self.send, cmd)
 
     async def set_device_capabilities(self) -> None:
         """Look up profile."""
@@ -307,10 +286,13 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         else:
             try:
                 acc: KlyqaAccount = self._kq_acc
-                acc.cloud.get_device_configs(set(self._kq_dev.product_id))
-                self.device_config = self._kq_dev.device_config
+                if acc.cloud:
+                    await acc.cloud.get_device_configs(
+                        set(self._kq_dev.product_id)
+                    )
+                    self.device_config = self._kq_dev.device_config
             except:  # pylint: disable=bare-except # noqa: E722
-                # If we don't get a reply, the config can come from the
+                # If we don't get a reply, the config can be taken from the
                 # device configs cache (in offline mode)
                 LOGGER.debug(traceback.format_exc())
 
