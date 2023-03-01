@@ -1,7 +1,6 @@
 """Support for klyqa lights."""
 from __future__ import annotations
 
-import asyncio
 import traceback
 from typing import Any
 
@@ -204,7 +203,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             hass=hass,
         )
 
-        self.A: int = 0
         self._attr_device_class = "light"
         self._attr_icon = "mdi:lightbulb"
         self._attr_supported_color_modes: set[ColorMode] = set()
@@ -217,8 +215,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         """Instruct the light to turn off."""
 
         command: Command | None = None
-
-        await asyncio.sleep(self.A)
 
         if ATTR_TRANSITION in kwargs:
             self._attr_transition_time = kwargs[ATTR_TRANSITION]
@@ -297,7 +293,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Instruct the light to turn off."""
 
-        await asyncio.sleep(self.A)
         cmd = PowerCommand(status="off")
         await self.entity_job(self.send, cmd)
         # repl: Message | None = await self.send(cmd)
@@ -473,7 +468,9 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
 
         await self.send(RequestCommand(), time_to_live_secs=5)
 
-    def update_device_state(self, state_complete: ResponseStatus) -> None:
+    def update_device_state(
+        self, state_complete: ResponseStatus | None
+    ) -> None:
         """Process state request response from the bulb to the entity state."""
 
         self._attr_assumed_state = True

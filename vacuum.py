@@ -1,7 +1,6 @@
 """Support for klyqa vacuum cleaners."""
 from __future__ import annotations
 
-import asyncio
 from enum import Enum
 import traceback
 from typing import Any, cast
@@ -323,7 +322,9 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
                 "suggested_area"
             ] = entity_registry_entry.area_id
 
-    def update_device_state(self, state_complete: ResponseStatus) -> None:
+    def update_device_state(
+        self, state_complete: ResponseStatus | None
+    ) -> None:
         """Process state request response from the device to the entity state."""
 
         self._attr_assumed_state = True
