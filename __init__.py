@@ -46,6 +46,7 @@ from .const import DOMAIN, LOGGER
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(minutes=5)
+DEBUG_LEVEL = TRACE
 
 
 class KlyqaAccount(Account):
@@ -221,11 +222,8 @@ class KlyqaControl:
         self.client = await Client.create_worker()
 
 
-async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
-    """Set up the klyqa component."""
-
-    if DOMAIN in hass.data:
-        return True
+def set_klyqa_logger(yaml_config: ConfigType) -> None:
+    """Use integration logger for klyqa-ctl. If desired add debug logging."""
 
     set_logger(logger=_LOGGER)
 
@@ -246,8 +244,17 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
             )
         )
     ):
-        set_debug_logger(level=DEBUG)
-        LOGGER_DBG.propagate = False
+        set_debug_logger(level=DEBUG_LEVEL)
+        LOGGER_DBG.propagate = False  # prevent double logging
+
+
+async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
+    """Set up the klyqa component."""
+
+    if DOMAIN in hass.data:
+        return True
+
+    set_klyqa_logger(yaml_config)
 
     klyqa: KlyqaControl = KlyqaControl()
     hass.data[DOMAIN] = klyqa
@@ -372,7 +379,7 @@ class KlyqaEntity(Entity):
         self._attr_unique_id: str = format_uid(self.u_id)
         self.entity_id = entity_id
 
-        self._attr_should_poll = False  # should_poll
+        self._attr_should_poll = False
         self.config_entry = config_entry
 
         def status_update_cb() -> None:
