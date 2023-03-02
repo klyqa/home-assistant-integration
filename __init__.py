@@ -45,7 +45,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import DOMAIN, LOGGER
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
-SCAN_INTERVAL: timedelta = timedelta(minutes=5)
+SCAN_INTERVAL: timedelta = timedelta(minutes=2)
 DEBUG_LEVEL = TRACE
 
 
