@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from enum import Enum
 import traceback
-from typing import Any, cast
+from typing import Any, Type, cast
 
 from klyqa_ctl.account import AccountDevice
 from klyqa_ctl.communication.cloud import RequestMethod
@@ -47,11 +47,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import KlyqaAccount, KlyqaEntity  # PARALLEL_UPDATES, SCAN_INTERVAL
+from . import KlyqaAccount, KlyqaEntity, SCAN_INTERVAL
 from .const import DOMAIN, LOGGER
-
-# TIMEOUT_SEND = 30
-# SCAN_INTERVAL: timedelta = timedelta(minutes=5)
 
 SUPPORT_KLYQA: VacuumEntityFeature = (
     VacuumEntityFeature.BATTERY
@@ -224,7 +221,9 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
 
         This method must be run in the event loop.
         """
-        fs_idx: int = enum_index(fan_speed, cast(Enum, VcSuctionStrengths))
+        fs_idx: int = enum_index(
+            fan_speed, cast(Type[Enum], VcSuctionStrengths)
+        )
 
         await self.send(
             RequestSetCommand(suction=cast(VcSuctionStrengths, fs_idx))

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import traceback
-from typing import Any
+from typing import Any, cast
 
 from klyqa_ctl.account import AccountDevice
+
+from klyqa_ctl.devices.light.light import Light
 from klyqa_ctl.devices.light.commands import (
     BrightnessCommand,
     ColorCommand,
@@ -44,8 +46,8 @@ from homeassistant.components.light import (
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform  # EVENT_HOMEASSISTANT_STOP,
-from homeassistant.core import HomeAssistant  # Event,
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
@@ -66,8 +68,6 @@ from homeassistant.util.color import (
 
 from . import SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
 from .const import DOMAIN, LOGGER
-
-# TIMEOUT_SEND: int = 30
 
 SUPPORT_KLYQA: LightEntityFeature = LightEntityFeature.TRANSITION
 
@@ -203,6 +203,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             hass=hass,
         )
 
+        self._kq_light: Light = cast(Light, self._kq_dev)
         self._attr_device_class = "light"
         self._attr_icon = "mdi:lightbulb"
         self._attr_supported_color_modes: set[ColorMode] = set()
@@ -304,8 +305,8 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             and "deviceTraits" in self.device_config
             and (device_traits := self.device_config["deviceTraits"])
         ):
-            temp_range: Range = self._kq_dev.temperature_range
-            if [
+            temp_range: Range | None = self._kq_light.temperature_range
+            if temp_range and [
                 x
                 for x in device_traits
                 if "msg_key" in x and x["msg_key"] == "temperature"
