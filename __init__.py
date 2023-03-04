@@ -4,17 +4,17 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from logging import DEBUG
-from typing import Any
+import traceback
+from typing import Any, Final
 
 from klyqa_ctl.account import Account, AccountDevice
 from klyqa_ctl.communication.cloud import CloudBackend
 from klyqa_ctl.controller_data import ControllerData
 from klyqa_ctl.devices.device import Device
-from klyqa_ctl.devices.light.commands import RequestCommand
 from klyqa_ctl.devices.light.light import Light
 from klyqa_ctl.devices.vacuum.vacuum import VacuumCleaner
 from klyqa_ctl.general.general import (
+    PRODUCT_URLS,
     DEFAULT_SEND_TIMEOUT_MS,
     TRACE,
     DeviceConfig,
@@ -26,6 +26,10 @@ from klyqa_ctl.general.general import (
 )
 from klyqa_ctl.general.message import Message, MessageState
 from klyqa_ctl.klyqa_ctl import Client
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers import device_registry as dev_reg
+from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
+
 
 from homeassistant.components.light import ENTITY_ID_FORMAT
 from homeassistant.config_entries import ConfigEntry
@@ -46,7 +50,7 @@ from .const import DOMAIN, LOGGER
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(minutes=2)
-DEBUG_LEVEL = TRACE
+DEBUG_LEVEL: Final = TRACE
 
 
 class KlyqaAccount(Account):
@@ -64,7 +68,8 @@ class KlyqaAccount(Account):
         polling: bool = True,
         config_entry: ConfigEntry | None = None,
     ) -> None:
-        """HAKlyqaAccount."""
+        """Initialize the inherited klyqa-ctl account object
+        and the HA integration account."""
 
         super().__init__(ctl_data, cloud)
         self.hass = hass
@@ -80,7 +85,7 @@ class KlyqaAccount(Account):
         self.add_cleaner_entity: Callable[
             [str, AccountDevice], Awaitable[None]
         ] | None = None
-        # self.entities_added: bool = False  # for now we add entities
+
         self.entity_ids: set[str | None] = set()
 
     @classmethod
@@ -414,9 +419,67 @@ class KlyqaEntity(Entity):
             await self._kq_acc.update_account()
         await self.async_update_settings()
 
-    @abstractmethod
     async def async_update_settings(self) -> None:
         """Set device specific settings from the klyqa settings cloud."""
+
+        if self._kq_dev.device_config:
+            self.device_config = self._kq_dev.device_config
+        else:
+            try:
+                acc: KlyqaAccount = self._kq_acc
+                if acc.cloud:
+                    await acc.cloud.get_device_configs(
+                        set(self._kq_dev.product_id)
+                    )
+                    self.device_config = self._kq_dev.device_config
+            except:  # pylint: disable=bare-except # noqa: E722
+                # If we don't get reply, use offline cache.
+                LOGGER.debug(traceback.format_exc())
+
+        settings: TypeJson = self._kq_acc_dev.acc_settings
+
+        self._attr_name = settings["name"]
+        self._attr_unique_id = format_uid(settings["localDeviceId"])
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._attr_unique_id)},
+            name=self.name,
+            manufacturer="QConnex GmbH",
+            model=settings["productId"],
+            sw_version=settings["firmwareVersion"],
+            hw_version=settings["hardwareRevision"],
+        )
+
+        if (
+            self.device_config
+            and "productId" in self.device_config
+            and self.device_config["productId"] in PRODUCT_URLS
+        ):
+            self._attr_device_info["configuration_url"] = PRODUCT_URLS[
+                self.device_config["productId"]
+            ]
+
+        entity_registry: EntityRegistry = ent_reg.async_get(self.hass)
+        entity_id: str | None = entity_registry.async_get_entity_id(
+            Platform.VACUUM, DOMAIN, str(self.unique_id)
+        )
+        entity_registry_entry: RegistryEntry | None = None
+        if entity_id:
+            entity_registry_entry = entity_registry.async_get(str(entity_id))
+
+        device_registry: dev_reg.DeviceRegistry = dev_reg.async_get(self.hass)
+
+        if self._attr_device_info:
+            if self.config_entry:
+
+                device_registry.async_get_or_create(
+                    config_entry_id=self.config_entry.entry_id,
+                    **self._attr_device_info,
+                )
+
+            if entity_registry_entry:
+                self._attr_device_info[
+                    "suggested_area"
+                ] = entity_registry_entry.area_id
 
     @abstractmethod
     def update_device_state(self, state_complete) -> None:

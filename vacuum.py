@@ -2,14 +2,11 @@
 from __future__ import annotations
 
 from enum import Enum
-import traceback
 from typing import Any, Type, cast
 
 from klyqa_ctl.account import AccountDevice
-from klyqa_ctl.communication.cloud import RequestMethod
 from klyqa_ctl.devices.vacuum.commands import (
     RequestGetCommand,
-    RequestResetCommand,
     RequestSetCommand,
 )
 from klyqa_ctl.devices.vacuum.general import (
@@ -20,10 +17,7 @@ from klyqa_ctl.devices.vacuum.general import (
 from klyqa_ctl.devices.vacuum.response_status import ResponseStatus
 from klyqa_ctl.general.general import (
     DEFAULT_SEND_TIMEOUT_MS,
-    PRODUCT_URLS,
-    TypeJson,
     enum_index,
-    format_uid,
 )
 
 from homeassistant.components.vacuum import (
@@ -40,11 +34,11 @@ from homeassistant.components.vacuum import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers import entity_registry as er
+
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
+from homeassistant.helpers.entity_registry import EntityRegistry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import KlyqaAccount, KlyqaEntity, SCAN_INTERVAL
@@ -101,6 +95,11 @@ async def async_setup_klyqa(
 
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
+        # Clear status added from cloud when the bulb is not connected to the
+        # cloud so offline. Entity status will be updated when adding.
+        if not acc_dev.device.cloud.connected:
+            acc_dev.device.status = None
+
         registered_entity_id: str | None = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, u_id
         )
@@ -110,8 +109,6 @@ async def async_setup_klyqa(
 
         if registered_entity_id and registered_entity_id != entity_id:
             entity_registry.async_remove(str(registered_entity_id))
-        # else:
-        #     return
 
         registered_entity_id = entity_registry.async_get_entity_id(
             Platform.VACUUM, DOMAIN, u_id
@@ -251,75 +248,6 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
 
         await super().send(RequestGetCommand.all(), time_to_live_secs=5)
         self.schedule_update_ha_state(force_refresh=False)
-
-    async def async_update_settings(self) -> None:
-        """Set device specific settings from the klyqa settings cloud."""
-
-        if (
-            self._kq_acc.settings is None
-            or self._kq_acc_dev.acc_settings is None
-        ):
-            return
-
-        settings: TypeJson = self._kq_acc_dev.acc_settings
-
-        # Look up profile.
-        if self._kq_dev.device_config:
-            self.device_config = self._kq_dev.device_config
-        else:
-            try:
-                acc: KlyqaAccount = self._kq_acc
-                if acc.cloud:
-                    await acc.cloud.get_device_configs(
-                        set(self._kq_dev.product_id)
-                    )
-                self.device_config = self._kq_dev.device_config
-            except:  # pylint: disable=bare-except # noqa: E722
-                # If we don't get a reply, the config can come from the
-                # device configs cache (in offline mode)
-                LOGGER.debug(traceback.format_exc())
-
-        self._attr_name = settings["name"]
-        self._attr_unique_id = format_uid(settings["localDeviceId"])
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            name=self.name,
-            manufacturer="QConnex GmbH",
-            model=settings["productId"],
-            sw_version=settings["firmwareVersion"],
-            hw_version=settings["hardwareRevision"],
-        )
-
-        if (
-            self.device_config
-            and "productId" in self.device_config
-            and self.device_config["productId"] in PRODUCT_URLS
-        ):
-            self._attr_device_info["configuration_url"] = PRODUCT_URLS[
-                self.device_config["productId"]
-            ]
-
-        entity_registry: EntityRegistry = er.async_get(self.hass)
-        entity_id: str | None = entity_registry.async_get_entity_id(
-            Platform.VACUUM, DOMAIN, str(self.unique_id)
-        )
-        entity_registry_entry: RegistryEntry | None = None
-        if entity_id:
-            entity_registry_entry = entity_registry.async_get(str(entity_id))
-
-        device_registry: dr.DeviceRegistry = dr.async_get(self.hass)
-
-        if self.config_entry:
-
-            device_registry.async_get_or_create(
-                config_entry_id=self.config_entry.entry_id,
-                **self._attr_device_info,
-            )
-
-        if entity_registry_entry:
-            self._attr_device_info[
-                "suggested_area"
-            ] = entity_registry_entry.area_id
 
     def update_device_state(
         self, state_complete: ResponseStatus | None
