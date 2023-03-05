@@ -22,7 +22,6 @@ from klyqa_ctl.devices.light.scenes import (
     get_scene_by_value,
 )
 from klyqa_ctl.general.general import (
-    PRODUCT_URLS,
     Command,
     Range,
     RgbColor,
@@ -115,7 +114,7 @@ async def async_setup_klyqa(
         entity_id: str = ENTITY_ID_FORMAT.format(u_id)
 
         # Clear status added from cloud when the bulb is not connected to the
-        # cloud so offline.
+        # cloud so offline. Entity status will be updated when adding.
         if not acc_dev.device.cloud.connected:
             acc_dev.device.status = None
 
@@ -130,7 +129,7 @@ async def async_setup_klyqa(
             Platform.LIGHT, DOMAIN, u_id
         )
 
-        LOGGER.info(
+        LOGGER.debug(
             "Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name")
         )
 
@@ -280,25 +279,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         self.hass.add_job(self.send, cmd)
 
     async def set_device_capabilities(self) -> None:
-        """Look up profile."""
-
-        if self._kq_dev.device_config:
-            self.device_config = self._kq_dev.device_config
-        else:
-            try:
-                acc: KlyqaAccount = self._kq_acc
-                if acc.cloud:
-                    await acc.cloud.get_device_configs(
-                        set(self._kq_dev.product_id)
-                    )
-                    self.device_config = self._kq_dev.device_config
-            except:  # pylint: disable=bare-except # noqa: E722
-                # If we don't get a reply, the config can be taken from the
-                # device configs cache (in offline mode)
-                LOGGER.debug(traceback.format_exc())
-
-        if not self.device_config:
-            return
+        """Set device color, temperature and scene capabilities."""
 
         if (
             self.device_config
@@ -306,7 +287,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             and (device_traits := self.device_config["deviceTraits"])
         ):
             temp_range: Range | None = self._kq_light.temperature_range
-            if temp_range and [
+            if temp_range and [  # look if device temp support and set limits
                 x
                 for x in device_traits
                 if "msg_key" in x and x["msg_key"] == "temperature"
@@ -319,13 +300,15 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                     temp_range.min if temp_range else 2000
                 )
 
-            if [
+            self._attr_supported_features |= LightEntityFeature.EFFECT
+
+            if [  # look if device color support and set limits for color
+                # and scenes
                 x
                 for x in device_traits
                 if "msg_key" in x and x["msg_key"] == "color"
             ]:
                 self._attr_supported_color_modes.add(ColorMode.RGB)
-                self._attr_supported_features |= LightEntityFeature.EFFECT  # type: ignore[assignment]
                 self._attr_effect_list = [x["label"] for x in BULB_SCENES]
             else:
                 self._attr_effect_list = [
@@ -333,37 +316,11 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                 ]
 
     async def async_update_settings(self) -> None:
-        """Set device specific settings from the klyqa settings cloud."""
+        """Set device specific settings from the Klyqa settings cloud."""
 
-        if (
-            self._kq_acc.settings is None
-            or self._kq_acc_dev.acc_settings is None
-        ):
-            return
-
-        settings: TypeJson = self._kq_acc_dev.acc_settings
+        await super().async_update_settings()
 
         await self.set_device_capabilities()
-
-        self._attr_name = settings["name"]
-        self._attr_unique_id = format_uid(settings["localDeviceId"])
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            name=self.name,
-            manufacturer="QConnex GmbH",
-            model=settings["productId"],
-            sw_version=settings["firmwareVersion"],
-            hw_version=settings["hardwareRevision"],
-        )
-
-        if (
-            self.device_config
-            and "productId" in self.device_config
-            and self.device_config["productId"] in PRODUCT_URLS
-        ):
-            self._attr_device_info["configuration_url"] = PRODUCT_URLS[
-                self.device_config["productId"]
-            ]
 
         entity_registry: EntityRegistry = er.async_get(self.hass)
         entity_id: str | None = entity_registry.async_get_entity_id(
@@ -379,72 +336,72 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             identifiers={(DOMAIN, self._attr_unique_id)}
         )
 
-        if entity_registry_entry:
-            self._attr_device_info[
-                "suggested_area"
-            ] = entity_registry_entry.area_id
-
         device_entry: dr.DeviceEntry | None = None
-        if self.config_entry:
-            device_entry = device_registry.async_get_or_create(
-                config_entry_id=self.config_entry.entry_id,
-                **self._attr_device_info,
-            )
 
-        self.rooms = []
-        room: TypeJson
-        for room in self._kq_acc.settings["rooms"]:
-            for dev in room["devices"]:
-                if dev and format_uid(dev["localDeviceId"]) == self.u_id:
-                    self.rooms.append(room)
+        if self._kq_acc.settings and "rooms" in self._kq_acc.settings:
+            self.rooms = []
+            room: TypeJson
+            for room in self._kq_acc.settings["rooms"]:
+                for dev in room["devices"]:
+                    if dev and format_uid(dev["localDeviceId"]) == self.u_id:
+                        self.rooms.append(room)
 
-        if (
-            entity_registry_entry
-            and entity_registry_entry.area_id != ""
-            and len(self.rooms) == 0
-        ):
-            entity_registry.async_update_entity(
-                entity_id=entity_registry_entry.entity_id, area_id=""
-            )
+            if (
+                entity_registry_entry
+                and entity_registry_entry.area_id != ""
+                and len(self.rooms) == 0
+            ):
+                entity_registry.async_update_entity(
+                    entity_id=entity_registry_entry.entity_id, area_id=""
+                )
 
-        if (
-            device_entry is not None
-            and device is not None
-            and device.area_id != ""
-            and len(self.rooms) == 0
-        ):
-            device_registry.async_update_device(device_entry.id, area_id="")
+            if (
+                device_entry is not None
+                and device is not None
+                and device.area_id != ""
+                and len(self.rooms) == 0
+            ):
+                device_registry.async_update_device(
+                    device_entry.id, area_id=""
+                )
 
-        elif len(self.rooms) > 0:
-            room_name: str = self.rooms[0]["name"]
-            area_reg: AreaRegistry = ar.async_get(self.hass)
-            # only 1 room supported per device by ha
-            area: AreaEntry | None = area_reg.async_get_area_by_name(room_name)
+            elif len(self.rooms) > 0:
+                room_name: str = self.rooms[0]["name"]
+                area_reg: AreaRegistry = ar.async_get(self.hass)
+                # only 1 room supported per device by ha
+                area: AreaEntry | None = area_reg.async_get_area_by_name(
+                    room_name
+                )
 
-            if not area:
-                self.hass.data[DOMAIN].entities_area_update.setdefault(
-                    room_name, set()
-                ).add(self.entity_id)
-                # new area first add
-                LOGGER.info("Create new room %s", room_name)
-                area = area_reg.async_get_or_create(room_name)
-                LOGGER.info("Add bulb %s to new room %s", self.name, area.name)
-
-            if area:
-                if device_entry is not None and entity_registry_entry:
-                    device_registry.async_update_device(
-                        device_entry.id, area_id=entity_registry_entry.area_id
+                if not area:
+                    self.hass.data[DOMAIN].entities_area_update.setdefault(
+                        room_name, set()
+                    ).add(self.entity_id)
+                    # new area first add
+                    LOGGER.debug("Create new room %s", room_name)
+                    area = area_reg.async_get_or_create(room_name)
+                    LOGGER.debug(
+                        "Add bulb %s to new room %s", self.name, area.name
                     )
 
-                if (
-                    entity_registry_entry
-                    and entity_registry_entry.area_id != area.id
-                ):
-                    LOGGER.info("Add bulb %s to room %s", self.name, area.name)
-                    entity_registry.async_update_entity(
-                        entity_id=entity_registry_entry.entity_id,
-                        area_id=area.id,
-                    )
+                if area:
+                    if device_entry is not None and entity_registry_entry:
+                        device_registry.async_update_device(
+                            device_entry.id,
+                            area_id=entity_registry_entry.area_id,
+                        )
+
+                    if (
+                        entity_registry_entry
+                        and entity_registry_entry.area_id != area.id
+                    ):
+                        LOGGER.debug(
+                            "Add bulb %s to room %s", self.name, area.name
+                        )
+                        entity_registry.async_update_entity(
+                            entity_id=entity_registry_entry.entity_id,
+                            area_id=area.id,
+                        )
 
     async def request_device_state(self) -> None:
         """Send device state request to device."""
