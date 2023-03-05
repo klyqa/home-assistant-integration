@@ -129,7 +129,7 @@ async def async_setup_klyqa(
             Platform.LIGHT, DOMAIN, u_id
         )
 
-        LOGGER.info(
+        LOGGER.debug(
             "Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name")
         )
 
@@ -300,6 +300,8 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                     temp_range.min if temp_range else 2000
                 )
 
+            self._attr_supported_features |= LightEntityFeature.EFFECT
+
             if [  # look if device color support and set limits for color
                 # and scenes
                 x
@@ -307,7 +309,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                 if "msg_key" in x and x["msg_key"] == "color"
             ]:
                 self._attr_supported_color_modes.add(ColorMode.RGB)
-                self._attr_supported_features |= LightEntityFeature.EFFECT
                 self._attr_effect_list = [x["label"] for x in BULB_SCENES]
             else:
                 self._attr_effect_list = [
@@ -377,9 +378,9 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                         room_name, set()
                     ).add(self.entity_id)
                     # new area first add
-                    LOGGER.info("Create new room %s", room_name)
+                    LOGGER.debug("Create new room %s", room_name)
                     area = area_reg.async_get_or_create(room_name)
-                    LOGGER.info(
+                    LOGGER.debug(
                         "Add bulb %s to new room %s", self.name, area.name
                     )
 
@@ -394,7 +395,7 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
                         entity_registry_entry
                         and entity_registry_entry.area_id != area.id
                     ):
-                        LOGGER.info(
+                        LOGGER.debug(
                             "Add bulb %s to room %s", self.name, area.name
                         )
                         entity_registry.async_update_entity(

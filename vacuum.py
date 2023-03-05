@@ -114,7 +114,7 @@ async def async_setup_klyqa(
             Platform.VACUUM, DOMAIN, u_id
         )
 
-        LOGGER.info(
+        LOGGER.debug(
             "Add entity %s (%s)", entity_id, acc_dev.acc_settings.get("name")
         )
         new_entity: KlyqaVCEntity = KlyqaVCEntity(

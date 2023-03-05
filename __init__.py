@@ -397,7 +397,7 @@ class KlyqaEntity(Entity):
     ) -> Message | None:
         """Send command to device."""
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "Send to bulb %s%s: %s",
             str(self.entity_id),
             " (" + self.name + ")" if self.name else "",
@@ -499,7 +499,7 @@ class KlyqaEntity(Entity):
         async def update() -> None:
 
             name: str = f" ({self.name})" if self.name else ""
-            LOGGER.info("Update device %s%s", self.entity_id, name)
+            LOGGER.debug("Update device %s%s", self.entity_id, name)
 
             await self.async_update_klyqa()
             await self.request_device_state()
