@@ -1,0 +1,17 @@
+{
+    // Please keep this file in sync with settings in .devcontainer/devcontainer.json
+    "python.formatting.provider": "black",
+    "python.testing.pytestEnabled": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true,
+        "source.addMissingImports": true
+    },
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.formatting.blackArgs": [
+        "--line-length=79",
+        "--experimental-string-processing"
+    ],
+    "python.testing.unittestEnabled": false,
+  }
