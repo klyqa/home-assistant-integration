@@ -4,32 +4,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+import logging
+from logging import DEBUG
 import traceback
 from typing import Any, Final
-
-from klyqa_ctl.account import Account, AccountDevice
-from klyqa_ctl.communication.cloud import CloudBackend
-from klyqa_ctl.controller_data import ControllerData
-from klyqa_ctl.devices.device import Device
-from klyqa_ctl.devices.light.light import Light
-from klyqa_ctl.devices.vacuum.vacuum import VacuumCleaner
-from klyqa_ctl.general.general import (
-    PRODUCT_URLS,
-    DEFAULT_SEND_TIMEOUT_MS,
-    TRACE,
-    DeviceConfig,
-    TypeJson,
-    format_uid,
-    set_debug_logger,
-    set_logger,
-    LOGGER_DBG,
-)
-from klyqa_ctl.general.message import Message, MessageState
-from klyqa_ctl.klyqa_ctl import Client
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers import device_registry as dev_reg
-from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
-
 
 from homeassistant.components.light import ENTITY_ID_FORMAT
 from homeassistant.config_entries import ConfigEntry
@@ -41,16 +19,38 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State
-from homeassistant.data_entry_flow import _LOGGER
+from homeassistant.helpers import device_registry as dev_reg
 from homeassistant.helpers import entity_registry as ent_reg
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.helpers.typing import ConfigType
+from klyqa_ctl.account import Account, AccountDevice
+from klyqa_ctl.communication.cloud import CloudBackend
+from klyqa_ctl.controller_data import ControllerData
+from klyqa_ctl.devices.device import Device
+from klyqa_ctl.devices.light.light import Light
+from klyqa_ctl.devices.vacuum.vacuum import VacuumCleaner
+from klyqa_ctl.general.general import (
+    DEFAULT_SEND_TIMEOUT_MS,
+    LOGGER_DBG,
+    PRODUCT_URLS,
+    TRACE,
+    DeviceConfig,
+    TypeJson,
+    format_uid,
+    set_debug_logger,
+    set_logger,
+)
+from klyqa_ctl.general.message import Message, MessageState
+from klyqa_ctl.klyqa_ctl import Client
 
-from .const import DOMAIN, LOGGER
+DOMAIN = "klyqa"
+
+LOGGER: logging.Logger = logging.getLogger(__package__)
 
 PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.VACUUM]
 SCAN_INTERVAL: timedelta = timedelta(minutes=2)
-DEBUG_LEVEL: Final = TRACE
+KLYQA_CTL_DEBUG_LEVEL: Final = TRACE
 
 
 class KlyqaAccount(Account):
@@ -110,12 +110,10 @@ class KlyqaAccount(Account):
 
         try:
             await self.request_account_settings_eco()
-        except:
+        except:  # pylint: disable=bare-except # noqa: E722
             pass  # we continue offline
 
-        # if not self.entities_added:
         await self.sync_account_devices_with_ha_entities()
-        # self.entities_added = True
 
     async def is_entity_registered(self, uid: str, platform: str) -> bool:
         """Check if entity is already registered in Home Assistant."""
@@ -227,29 +225,12 @@ class KlyqaControl:
         self.client = await Client.create_worker()
 
 
-def set_klyqa_logger(yaml_config: ConfigType) -> None:
+def set_klyqa_logger() -> None:
     """Use integration logger for klyqa-ctl. If desired add debug logging."""
 
-    set_logger(logger=_LOGGER)
-
-    if (
-        "logger" in yaml_config
-        and "logs" in yaml_config["logger"]
-        and (
-            (
-                "custom_components.klyqa" in yaml_config["logger"]["logs"]
-                and yaml_config["logger"]["logs"]["custom_components.klyqa"]
-                == "debug"
-            )
-            or (
-                "homeassistant.components.klyqa"
-                in yaml_config["logger"]["logs"]
-                and yaml_config["logger"]["logs"]["custom_components.klyqa"]
-                == "debug"
-            )
-        )
-    ):
-        set_debug_logger(level=DEBUG_LEVEL)
+    set_logger(logger=LOGGER)
+    if LOGGER.level == DEBUG:
+        set_debug_logger(level=KLYQA_CTL_DEBUG_LEVEL)
         LOGGER_DBG.propagate = False  # prevent double logging
 
 
@@ -259,7 +240,7 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
     if DOMAIN in hass.data:
         return True
 
-    set_klyqa_logger(yaml_config)
+    set_klyqa_logger()
 
     klyqa: KlyqaControl = KlyqaControl()
     hass.data[DOMAIN] = klyqa
@@ -305,10 +286,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await acc.login()
         await acc.get_account_state(print_onboarded_devices=False)
-    except:
+    except:  # pylint: disable=bare-except # noqa: E722
         pass  # offline we continue with cache if available
 
-    async def on_hass_stop(event: Event) -> None:
+    async def on_hass_stop(*_: Any) -> None:
         """Logout from account."""
 
         await acc.shutdown()
@@ -363,7 +344,6 @@ class KlyqaEntity(Entity):
         acc_dev: AccountDevice,
         acc: KlyqaAccount,
         entity_id: str,
-        hass: HomeAssistant,
         should_poll: bool = True,
         config_entry: ConfigEntry | None = None,
     ) -> None:
@@ -384,7 +364,7 @@ class KlyqaEntity(Entity):
         self._attr_unique_id: str = format_uid(self.u_id)
         self.entity_id = entity_id
 
-        self._attr_should_poll = False
+        self._attr_should_poll = should_poll
         self.config_entry = config_entry
 
         def status_update_cb() -> None:
@@ -397,7 +377,7 @@ class KlyqaEntity(Entity):
     ) -> Message | None:
         """Send command to device."""
 
-        _LOGGER.debug(
+        LOGGER.debug(
             "Send to bulb %s%s: %s",
             str(self.entity_id),
             " (" + self.name + ")" if self.name else "",

@@ -1,34 +1,7 @@
 """Support for klyqa lights."""
 from __future__ import annotations
 
-import traceback
 from typing import Any, cast
-
-from klyqa_ctl.account import AccountDevice
-
-from klyqa_ctl.devices.light.light import Light
-from klyqa_ctl.devices.light.commands import (
-    BrightnessCommand,
-    ColorCommand,
-    PowerCommand,
-    RequestCommand,
-    RoutinePutCommand,
-    RoutineStartCommand,
-    TemperatureCommand,
-)
-from klyqa_ctl.devices.light.response_status import ResponseStatus
-from klyqa_ctl.devices.light.scenes import (
-    SCENES as BULB_SCENES,
-    get_scene_by_value,
-)
-from klyqa_ctl.general.general import (
-    Command,
-    Range,
-    RgbColor,
-    TypeJson,
-    format_uid,
-)
-from klyqa_ctl.general.message import Message, MessageState
 
 from homeassistant.components.group.light import LightGroup
 from homeassistant.components.light import (
@@ -47,11 +20,9 @@ from homeassistant.components.light import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import (
-    area_registry as ar,
-    device_registry as dr,
-    entity_registry as er,
-)
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.area_registry import AreaEntry, AreaRegistry
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -64,9 +35,24 @@ from homeassistant.util.color import (
     color_temperature_kelvin_to_mired,
     color_temperature_mired_to_kelvin,
 )
+from klyqa_ctl.account import AccountDevice
+from klyqa_ctl.devices.light.commands import (
+    BrightnessCommand,
+    ColorCommand,
+    PowerCommand,
+    RequestCommand,
+    RoutinePutCommand,
+    RoutineStartCommand,
+    TemperatureCommand,
+)
+from klyqa_ctl.devices.light.light import Light
+from klyqa_ctl.devices.light.response_status import ResponseStatus
+from klyqa_ctl.devices.light.scenes import SCENES as BULB_SCENES
+from klyqa_ctl.devices.light.scenes import get_scene_by_value
+from klyqa_ctl.general.general import Command, Range, RgbColor, TypeJson, format_uid
+from klyqa_ctl.general.message import Message, MessageState
 
-from . import SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
-from .const import DOMAIN, LOGGER
+from . import DOMAIN, LOGGER, SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
 
 SUPPORT_KLYQA: LightEntityFeature = LightEntityFeature.TRANSITION
 
@@ -137,7 +123,6 @@ async def async_setup_klyqa(
             acc_dev,
             acc,
             entity_id,
-            hass=hass,
             should_poll=acc.polling,
             config_entry=entry,
         )
@@ -187,7 +172,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
         acc_dev: AccountDevice,
         acc: KlyqaAccount,
         entity_id: str,
-        hass: HomeAssistant,
         should_poll: bool = True,
         config_entry: ConfigEntry | None = None,
     ) -> None:
@@ -199,7 +183,6 @@ class KlyqaLightEntity(RestoreEntity, LightEntity, KlyqaEntity):
             entity_id,
             should_poll=should_poll,
             config_entry=config_entry,
-            hass=hass,
         )
 
         self._kq_light: Light = cast(Light, self._kq_dev)
