@@ -4,22 +4,6 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Type, cast
 
-from klyqa_ctl.account import AccountDevice
-from klyqa_ctl.devices.vacuum.commands import (
-    RequestGetCommand,
-    RequestSetCommand,
-)
-from klyqa_ctl.devices.vacuum.general import (
-    VcSuctionStrengths,
-    VcWorkingMode,
-    VcWorkingStatus,
-)
-from klyqa_ctl.devices.vacuum.response_status import ResponseStatus
-from klyqa_ctl.general.general import (
-    DEFAULT_SEND_TIMEOUT_MS,
-    enum_index,
-)
-
 from homeassistant.components.vacuum import (
     ENTITY_ID_FORMAT,
     STATE_CLEANING,
@@ -35,14 +19,24 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import EntityRegistry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from klyqa_ctl.account import AccountDevice
+from klyqa_ctl.devices.vacuum.commands import (
+    RequestGetCommand,
+    RequestSetCommand,
+)
+from klyqa_ctl.devices.vacuum.general import (
+    VcSuctionStrengths,
+    VcWorkingMode,
+    VcWorkingStatus,
+)
+from klyqa_ctl.devices.vacuum.response_status import ResponseStatus
+from klyqa_ctl.general.general import DEFAULT_SEND_TIMEOUT_MS, enum_index
 
-from . import KlyqaAccount, KlyqaEntity, SCAN_INTERVAL
-from .const import DOMAIN, LOGGER
+from . import DOMAIN, LOGGER, SCAN_INTERVAL, KlyqaAccount, KlyqaEntity
 
 SUPPORT_KLYQA: VacuumEntityFeature = (
     VacuumEntityFeature.BATTERY
@@ -123,7 +117,6 @@ async def async_setup_klyqa(
             entity_id,
             should_poll=acc.polling,
             config_entry=entry,
-            hass=hass,
         )
         if new_entity:
             hass.add_job(add_entities, [new_entity], True)
@@ -142,7 +135,6 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
         acc_dev: AccountDevice,
         acc: KlyqaAccount,
         entity_id: str,
-        hass: HomeAssistant,
         should_poll: bool = True,
         config_entry: ConfigEntry | None = None,
     ) -> None:
@@ -154,7 +146,6 @@ class KlyqaVCEntity(StateVacuumEntity, KlyqaEntity):
             entity_id,
             should_poll=should_poll,
             config_entry=config_entry,
-            hass=hass,
         )
 
         self._attr_supported_features = SUPPORT_KLYQA
