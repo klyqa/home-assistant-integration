@@ -87,7 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = (
         str(entry.data.get(CONF_HOST))
         if entry.data.get(CONF_HOST) is not None
-        else "https://app-api.prod.qconnex.io"
+        else "https://app-api.app.klyqa.de"
     )
     scan_interval_raw = entry.data.get(CONF_SCAN_INTERVAL)
     scan_interval = (
