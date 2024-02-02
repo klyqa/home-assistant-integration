@@ -35,7 +35,7 @@ user_step_data_schema = vol.Schema(
             CONF_SYNC_ROOMS, default=True, msg="sync r", description="sync R"
         ): bool,
         vol.Required(CONF_POLLING, default=True): bool,
-        vol.Required(CONF_HOST, default="https://app-api.prod.qconnex.io"): str,
+        vol.Required(CONF_HOST, default="https://app-api.app.klyqa.de"): str,
     }
 )
 
