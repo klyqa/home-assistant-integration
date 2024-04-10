@@ -25,8 +25,7 @@ import traceback
 from collections.abc import Callable
 import asyncio
 
-from homeassistant.helpers.area_registry import SAVE_DELAY
-
+SAVE_DELAY = 0.5
 TIMEOUT_SEND = 11
 
 from homeassistant.components.group.light import LightGroup

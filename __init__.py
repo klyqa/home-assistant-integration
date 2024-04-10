@@ -55,9 +55,8 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-PLATFORMS: list[Platform] = [Platform.LIGHT]
-SCAN_INTERVAL_SECS = 120
-SCAN_INTERVAL = timedelta(seconds=SCAN_INTERVAL_SECS)
+PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.SWITCH]
+SCAN_INTERVAL = timedelta(seconds=30)
 
 
 async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
@@ -81,23 +80,11 @@ async def async_setup(hass: HomeAssistant, yaml_config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up or change Klyqa integration from a config entry."""
-
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
-    host = (
-        str(entry.data.get(CONF_HOST))
-        if entry.data.get(CONF_HOST) is not None
-        else "https://app-api.app.klyqa.de"
-    )
-    scan_interval_raw = entry.data.get(CONF_SCAN_INTERVAL)
-    scan_interval = (
-        int(scan_interval_raw) if scan_interval_raw is not None else SCAN_INTERVAL_SECS
-    )
-    polling = (
-        bool(entry.data.get(CONF_POLLING))
-        if entry.data.get(CONF_POLLING) is not None
-        else True
-    )
+    host = str(entry.data.get(CONF_HOST))
+    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL))
+    polling = bool(entry.data.get(CONF_POLLING))
     global SCAN_INTERVAL
     SCAN_INTERVAL = timedelta(seconds=scan_interval)
     sync_rooms = (
@@ -149,7 +136,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry, unique_id=entry.data[CONF_USERNAME]
         )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Set up platforms for the integration
+    for platform in PLATFORMS:
+        hass.async_create_task(
+            hass.config_entries.async_forward_entry_setup(entry, platform)
+        )
+
     return True
 
 
