@@ -111,9 +111,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 polling=self.polling,
                 scan_interval=self.scan_interval,
             )
-            login = self.hass.async_run_job(
-                klyqa.login,
-            )
+            login = await self.hass.async_add_executor_job(klyqa.login)
             if login:
                 await asyncio.wait_for(login, timeout=30)
             self.klyqa = klyqa
@@ -263,9 +261,7 @@ class KlyqaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 scan_interval=self.scan_interval,
             )
 
-            login = self.hass.async_run_job(
-                klyqa.login,
-            )
+            login = await self.hass.async_add_executor_job(klyqa.login)
             if login:
                 await asyncio.wait_for(login, timeout=30)
             else:
