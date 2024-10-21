@@ -111,7 +111,7 @@ async def async_setup_entry(
     klyqa = hass.data[DOMAIN].entries[entry.entry_id]
     if klyqa:
         await async_setup_klyqa(
-            hass, ConfigType(entry.data), async_add_entities, entry=entry, klyqa=klyqa
+            hass, entry.data, async_add_entities, entry=entry, klyqa=klyqa
         )
     return True
 
@@ -161,7 +161,7 @@ async def create_klyqa_api_from_config(hass, config: ConfigType) -> HAKlyqaAccou
         scan_interval=scan_interval,
     )
     component.klyqa_accounts[username] = klyqa
-    login = hass.async_run_job(klyqa.login)
+    login = await hass.async_add_executor_job(klyqa.login)
     try:
         if login:
             await asyncio.wait_for(login, timeout=11)
